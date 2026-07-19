@@ -14,6 +14,7 @@ export const EventType = {
   VideoUploaded: "VideoUploaded",
   TranscriptGenerated: "TranscriptGenerated",
   HighlightsDetected: "HighlightsDetected",
+  ClipGenerated: "ClipGenerated",
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];
@@ -62,11 +63,24 @@ export type HighlightsDetectedPayload = z.infer<
   typeof highlightsDetectedPayloadSchema
 >;
 
+export const clipGeneratedPayloadSchema = z.object({
+  eventId: z.string().uuid(),
+  type: z.literal(EventType.ClipGenerated),
+  videoId: z.string().uuid(),
+  userId: z.string().uuid(),
+  clipId: z.string().uuid(),
+  index: z.number().int().nonnegative(),
+  occurredAt: z.string().datetime(),
+});
+
+export type ClipGeneratedPayload = z.infer<typeof clipGeneratedPayloadSchema>;
+
 /** Union discriminada para el relay del outbox (crece por fase). */
 export const domainEventSchema = z.discriminatedUnion("type", [
   videoUploadedPayloadSchema,
   transcriptGeneratedPayloadSchema,
   highlightsDetectedPayloadSchema,
+  clipGeneratedPayloadSchema,
 ]);
 
 export type DomainEvent = z.infer<typeof domainEventSchema>;

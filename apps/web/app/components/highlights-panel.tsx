@@ -97,7 +97,7 @@ export function HighlightsPanel({
   }
 
   return (
-    <div className="max-h-56 space-y-2 overflow-y-auto p-4">
+    <div className="top-0 sticky space-y-2 p-4">
       <div className="flex items-center justify-between text-xs text-neutral-600">
         <span>{data.items.length} momentos sugeridos por IA</span>
         {data.costUsd !== null && <span>${data.costUsd.toFixed(4)}</span>}

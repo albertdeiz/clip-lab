@@ -6,10 +6,12 @@ import {
   ROUTING,
   videoUploadedPayloadSchema,
   transcriptGeneratedPayloadSchema,
+  highlightsDetectedPayloadSchema,
 } from "@clip-lab/contracts";
 import { loadEnv } from "@clip-lab/config";
 import { transcribe } from "./transcriber.js";
 import { detectHighlights } from "./highlights/job.js";
+import { generateClips } from "./clips/job.js";
 import { NonRetryableError } from "./errors.js";
 
 const env = loadEnv();
@@ -122,7 +124,16 @@ async function main(): Promise<void> {
     "highlights",
   );
 
-  log(`Whisper: ${env.WHISPER_MODEL} · Highlights: ${env.HIGHLIGHT_GLOBAL_MODEL}`);
+  await consumeQueue(
+    QUEUES.clips,
+    QUEUES.clipsDlq,
+    ROUTING.HighlightsDetected,
+    (raw) => highlightsDetectedPayloadSchema.parse(raw),
+    (p) => generateClips(p, publish),
+    "clips",
+  );
+
+  log(`Whisper: ${env.WHISPER_MODEL} · Highlights: ${env.HIGHLIGHT_GLOBAL_MODEL} · Reframe: ${env.CLIP_REFRAME}`);
 
   const shutdown = async (): Promise<void> => {
     log("cerrando…");

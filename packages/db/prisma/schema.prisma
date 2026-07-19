@@ -28,6 +28,13 @@ enum HighlightStatus {
   FAILED
 }
 
+enum ClipStatus {
+  QUEUED
+  RENDERING
+  READY
+  FAILED
+}
+
 model User {
   id            String         @id @default(uuid()) @db.Uuid
   email         String         @unique
@@ -86,10 +93,34 @@ model Video {
   upload       Upload?
   transcript   Transcript?
   highlightSet HighlightSet?
+  clips        Clip[]
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
+}
+
+/** Clip corto (9:16) recortado de un highlight del video. */
+model Clip {
+  id          String     @id @default(uuid()) @db.Uuid
+  videoId     String     @db.Uuid
+  index       Int // orden (coincide con el ranking del highlight)
+  title       String
+  startSec    Float
+  endSec      Float
+  aspectRatio String     @default("9:16")
+  status      ClipStatus @default(QUEUED)
+  storageKey  String? // objeto S3 del clip renderizado
+  sizeBytes   BigInt?
+  width       Int?
+  height      Int?
+  durationSec Float?
+  failReason  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  video       Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, index])
 }
 
 /**

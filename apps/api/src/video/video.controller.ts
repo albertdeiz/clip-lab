@@ -61,6 +61,36 @@ export class VideoController {
     return this.videos.retryTranscript(user.id, id);
   }
 
+  @Get(":id/clips")
+  clips(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.clips(user.id, id);
+  }
+
+  @Post(":id/clips/retry")
+  @HttpCode(202)
+  retryClips(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.retryClips(user.id, id);
+  }
+
+  @Get(":id/clips/:clipId/playback-url")
+  clipPlayback(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Param("clipId") clipId: string,
+  ) {
+    return this.videos.clipPlaybackUrl(user.id, id, clipId);
+  }
+
+  @Delete(":id/clips/:clipId")
+  @HttpCode(204)
+  removeClip(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Param("clipId") clipId: string,
+  ) {
+    return this.videos.removeClip(user.id, id, clipId);
+  }
+
   @Delete(":id")
   @HttpCode(204)
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {

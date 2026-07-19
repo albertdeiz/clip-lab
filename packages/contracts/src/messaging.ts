@@ -8,6 +8,8 @@ export const QUEUES = {
   transcriptionDlq: "transcription.dlq",
   highlights: "highlights.jobs",
   highlightsDlq: "highlights.dlq",
+  clips: "clips.jobs",
+  clipsDlq: "clips.dlq",
 } as const;
 
 /** Routing keys = nombres de evento de dominio. */
@@ -15,6 +17,7 @@ export const ROUTING = {
   VideoUploaded: "VideoUploaded",
   TranscriptGenerated: "TranscriptGenerated",
   HighlightsDetected: "HighlightsDetected",
+  ClipGenerated: "ClipGenerated",
 } as const;
 
 /** Canal de Redis pub/sub para progreso en vivo (worker → API → cliente). */

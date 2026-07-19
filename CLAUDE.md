@@ -12,12 +12,13 @@ iterations** — each phase leaves the product working end-to-end.
 
 ## Current status
 
-- **Phases 1–3 done and verified E2E**: ingestion (auth + resumable multipart
+- **Phases 1–4 done and verified E2E**: ingestion (auth + resumable multipart
   upload + ffprobe metadata + player), automatic transcription (Whisper +
-  RabbitMQ), and AI highlight detection (hierarchical LLM pipeline). Plus
-  retries (auto backoff + manual).
-- **Next**: Phase 4 — Clip generation (FFmpeg: precise cut per highlight +
-  9:16 reframe). See [`docs/ROADMAP.md`](./docs/ROADMAP.md).
+  RabbitMQ), AI highlight detection (hierarchical LLM pipeline), and clip
+  generation (FFmpeg precise cut + 9:16 reframe). Plus retries (auto backoff +
+  manual) and a provider-agnostic AI layer.
+- **Next**: Phase 5 — Animated captions (word-level karaoke burned into clips).
+  See [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 
 ## Monorepo structure
 

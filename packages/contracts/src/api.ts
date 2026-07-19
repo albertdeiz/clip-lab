@@ -156,6 +156,36 @@ export const highlightsResponseSchema = z.object({
 });
 export type HighlightsResponse = z.infer<typeof highlightsResponseSchema>;
 
+// --- Clips ---
+export const clipStatusSchema = z.enum([
+  "QUEUED",
+  "RENDERING",
+  "READY",
+  "FAILED",
+]);
+export type ClipStatus = z.infer<typeof clipStatusSchema>;
+
+export const clipSchema = z.object({
+  id: z.string().uuid(),
+  index: z.number().int(),
+  title: z.string(),
+  startSec: z.number(),
+  endSec: z.number(),
+  aspectRatio: z.string(),
+  status: clipStatusSchema,
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  durationSec: z.number().nullable(),
+  sizeBytes: z.number().int().nullable(),
+  failReason: z.string().nullable(),
+});
+export type Clip = z.infer<typeof clipSchema>;
+
+export const clipListResponseSchema = z.object({
+  items: z.array(clipSchema),
+});
+export type ClipListResponse = z.infer<typeof clipListResponseSchema>;
+
 // --- Error uniforme ---
 export const apiErrorSchema = z.object({
   error: z.object({

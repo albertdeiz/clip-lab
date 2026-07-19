@@ -12,6 +12,7 @@ import type {
   TranscriptWord,
   HighlightsResponse,
   Highlight,
+  ClipListResponse,
 } from "@clip-lab/contracts";
 import { EventType } from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -204,6 +205,101 @@ export class VideoService {
           },
         },
       });
+    });
+  }
+
+  async clips(userId: string, id: string): Promise<ClipListResponse> {
+    await this.loadOwned(userId, id);
+    const clips = await this.prisma.clip.findMany({
+      where: { videoId: id },
+      orderBy: { index: "asc" },
+    });
+    return {
+      items: clips.map((c) => ({
+        id: c.id,
+        index: c.index,
+        title: c.title,
+        startSec: c.startSec,
+        endSec: c.endSec,
+        aspectRatio: c.aspectRatio,
+        status: c.status,
+        width: c.width,
+        height: c.height,
+        durationSec: c.durationSec,
+        sizeBytes: c.sizeBytes === null ? null : Number(c.sizeBytes),
+        failReason: c.failReason,
+      })),
+    };
+  }
+
+  private async loadOwnedClip(userId: string, videoId: string, clipId: string) {
+    await this.loadOwned(userId, videoId);
+    const clip = await this.prisma.clip.findUnique({ where: { id: clipId } });
+    if (!clip || clip.videoId !== videoId) {
+      throw new NotFoundException({
+        code: "CLIP_NOT_FOUND",
+        message: "Clip no encontrado",
+      });
+    }
+    return clip;
+  }
+
+  async clipPlaybackUrl(
+    userId: string,
+    videoId: string,
+    clipId: string,
+  ): Promise<PlaybackUrlResponse> {
+    const clip = await this.loadOwnedClip(userId, videoId, clipId);
+    if (clip.status !== "READY" || !clip.storageKey) {
+      throw new NotFoundException({
+        code: "CLIP_NOT_READY",
+        message: "El clip aún no está listo",
+      });
+    }
+    const url = await this.storage.presignGetObject(clip.storageKey);
+    return { url, expiresInSec: this.storage.presignTtlSec };
+  }
+
+  async removeClip(
+    userId: string,
+    videoId: string,
+    clipId: string,
+  ): Promise<void> {
+    const clip = await this.loadOwnedClip(userId, videoId, clipId);
+    if (clip.storageKey) {
+      await this.storage.deleteObject(clip.storageKey).catch(() => undefined);
+    }
+    await this.prisma.clip.delete({ where: { id: clipId } });
+  }
+
+  /** (Re)genera los clips: re-publica HighlightsDetected vía outbox. */
+  async retryClips(userId: string, id: string): Promise<void> {
+    await this.loadOwned(userId, id);
+    const set = await this.prisma.highlightSet.findUnique({
+      where: { videoId: id },
+    });
+    if (!set || set.status !== "DONE") {
+      throw new BadRequestException({
+        code: "HIGHLIGHTS_NOT_READY",
+        message: "Los highlights aún no están listos",
+      });
+    }
+    const count = Array.isArray(set.items) ? set.items.length : 0;
+    await this.prisma.outboxEvent.create({
+      data: {
+        aggregateType: "Video",
+        aggregateId: id,
+        type: EventType.HighlightsDetected,
+        payload: {
+          eventId: randomUUID(),
+          type: EventType.HighlightsDetected,
+          videoId: id,
+          userId,
+          count,
+          costUsd: set.costUsd === null ? 0 : Number(set.costUsd),
+          occurredAt: new Date().toISOString(),
+        },
+      },
     });
   }
 

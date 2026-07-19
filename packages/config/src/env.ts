@@ -55,6 +55,11 @@ export const envSchema = z.object({
   CHUNK_OVERLAP_SECONDS: z.coerce.number().int().nonnegative().default(20),
   HIGHLIGHTS_TARGET: z.coerce.number().int().positive().default(10),
 
+  // --- Proceso: generación de clips (FFmpeg) ---
+  CLIP_REFRAME: z.enum(["crop", "blur", "fit"]).default("crop"),
+  CLIP_WIDTH: z.coerce.number().int().positive().default(1080),
+  CLIP_HEIGHT: z.coerce.number().int().positive().default(1920),
+
   JWT_SECRET: z.string().min(32, "JWT_SECRET debe tener al menos 32 caracteres"),
   ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL: z.coerce.number().int().positive().default(2_592_000),

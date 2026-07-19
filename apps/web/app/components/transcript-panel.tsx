@@ -100,7 +100,7 @@ export function TranscriptPanel({
   }
 
   return (
-    <div className="max-h-48 overflow-y-auto p-4 text-sm leading-relaxed">
+    <div className="p-4 text-sm leading-relaxed">
       <div className="mb-2 flex items-center gap-2 text-xs text-neutral-600">
         <span className="rounded bg-neutral-800 px-1.5 py-0.5 uppercase">
           {transcript.language ?? "?"}

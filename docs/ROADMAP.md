@@ -43,7 +43,7 @@ caption → export`. Auth/infra/bus first by dependency; billing and scaling
 | Highlights data model + AI artifact | 4 | 4 | 2 | — | 2 d |
 | Highlights UI | 5 | 4 | 3 | Worker | 4 d |
 
-## Phase 4 — Clip generation (FFmpeg + 9:16 reframe)
+## Phase 4 — Clip generation (FFmpeg + 9:16 reframe) — done
 | Feature | Value | Crit. | Compl. | Deps | Est. |
 |---|---|---|---|---|---|
 | Clip Worker (FFmpeg, precise cut) | 5 | 5 | 4 | Phase 3 | 5 d |
