@@ -43,6 +43,11 @@ export class VideoController {
     return this.videos.transcript(user.id, id);
   }
 
+  @Get(":id/highlights")
+  highlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.highlights(user.id, id);
+  }
+
   @Delete(":id")
   @HttpCode(204)
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {

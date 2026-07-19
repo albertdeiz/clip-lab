@@ -21,6 +21,13 @@ enum TranscriptStatus {
   FAILED
 }
 
+enum HighlightStatus {
+  QUEUED
+  DETECTING
+  DONE
+  FAILED
+}
+
 model User {
   id            String         @id @default(uuid()) @db.Uuid
   email         String         @unique
@@ -76,12 +83,34 @@ model Video {
   failReason  String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-  upload      Upload?
-  transcript  Transcript?
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  upload       Upload?
+  transcript   Transcript?
+  highlightSet HighlightSet?
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
+}
+
+/**
+ * Conjunto de highlights de un video. Es el artefacto IA persistido (§7 COST):
+ * lleva modelo, hashes, versión, fecha y costo para caché/auditoría/incremental.
+ */
+model HighlightSet {
+  id          String          @id @default(uuid()) @db.Uuid
+  videoId     String          @unique @db.Uuid
+  status      HighlightStatus @default(QUEUED)
+  version     Int             @default(1)
+  model       String? // modelo del rerank global
+  localModel  String? // modelo del análisis por chunk
+  promptHash  String?
+  contentHash String? // hash del transcript → caché / reproceso incremental
+  items       Json? // [{ start, end, score, title, reason }]
+  costUsd     Decimal?        @db.Decimal(10, 6)
+  failReason  String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  video       Video           @relation(fields: [videoId], references: [id], onDelete: Cascade)
 }
 
 model Transcript {

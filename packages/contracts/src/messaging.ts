@@ -6,12 +6,15 @@ export const DLX = "clip.events.dlx"; // dead-letter exchange
 export const QUEUES = {
   transcription: "transcription.jobs",
   transcriptionDlq: "transcription.dlq",
+  highlights: "highlights.jobs",
+  highlightsDlq: "highlights.dlq",
 } as const;
 
 /** Routing keys = nombres de evento de dominio. */
 export const ROUTING = {
   VideoUploaded: "VideoUploaded",
   TranscriptGenerated: "TranscriptGenerated",
+  HighlightsDetected: "HighlightsDetected",
 } as const;
 
 /** Canal de Redis pub/sub para progreso en vivo (worker → API → cliente). */

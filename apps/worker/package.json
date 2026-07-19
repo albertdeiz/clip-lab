@@ -9,12 +9,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
     "@aws-sdk/client-s3": "^3.720.0",
     "@clip-lab/config": "workspace:*",
     "@clip-lab/contracts": "workspace:*",
     "@clip-lab/db": "workspace:*",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "amqplib": "^0.10.5"
+    "amqplib": "^0.10.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/amqplib": "^0.10.6",

@@ -5,6 +5,8 @@ import type {
   PlaybackUrlResponse,
   TranscriptResponse,
   TranscriptWord,
+  HighlightsResponse,
+  Highlight,
 } from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { StorageService } from "../storage/storage.service.js";
@@ -90,6 +92,29 @@ export class VideoService {
       text: t.text,
       words: Array.isArray(t.words) ? (t.words as TranscriptWord[]) : [],
       failReason: t.failReason,
+    };
+  }
+
+  async highlights(userId: string, id: string): Promise<HighlightsResponse> {
+    await this.loadOwned(userId, id); // authz
+    const set = await this.prisma.highlightSet.findUnique({
+      where: { videoId: id },
+    });
+    if (!set) {
+      return {
+        status: "QUEUED",
+        model: null,
+        costUsd: null,
+        items: [],
+        failReason: null,
+      };
+    }
+    return {
+      status: set.status,
+      model: set.model,
+      costUsd: set.costUsd === null ? null : Number(set.costUsd),
+      items: Array.isArray(set.items) ? (set.items as Highlight[]) : [],
+      failReason: set.failReason,
     };
   }
 

@@ -129,6 +129,33 @@ export const transcriptResponseSchema = z.object({
 });
 export type TranscriptResponse = z.infer<typeof transcriptResponseSchema>;
 
+// --- Highlights ---
+export const highlightStatusSchema = z.enum([
+  "QUEUED",
+  "DETECTING",
+  "DONE",
+  "FAILED",
+]);
+export type HighlightStatus = z.infer<typeof highlightStatusSchema>;
+
+export const highlightSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+  score: z.number(), // 0-1
+  title: z.string(),
+  reason: z.string(),
+});
+export type Highlight = z.infer<typeof highlightSchema>;
+
+export const highlightsResponseSchema = z.object({
+  status: highlightStatusSchema,
+  model: z.string().nullable(),
+  costUsd: z.number().nullable(),
+  items: z.array(highlightSchema),
+  failReason: z.string().nullable(),
+});
+export type HighlightsResponse = z.infer<typeof highlightsResponseSchema>;
+
 // --- Error uniforme ---
 export const apiErrorSchema = z.object({
   error: z.object({

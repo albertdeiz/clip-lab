@@ -20,6 +20,14 @@ export const envSchema = z.object({
 
   WHISPER_MODEL: z.string().default("base"),
 
+  // --- Detección de highlights (LLM) ---
+  ANTHROPIC_API_KEY: z.string().optional(),
+  HIGHLIGHT_LOCAL_MODEL: z.string().default("claude-haiku-4-5"),
+  HIGHLIGHT_GLOBAL_MODEL: z.string().default("claude-sonnet-5"),
+  CHUNK_SECONDS: z.coerce.number().int().positive().default(150),
+  CHUNK_OVERLAP_SECONDS: z.coerce.number().int().nonnegative().default(20),
+  HIGHLIGHTS_TARGET: z.coerce.number().int().positive().default(10),
+
   JWT_SECRET: z.string().min(32, "JWT_SECRET debe tener al menos 32 caracteres"),
   ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL: z.coerce.number().int().positive().default(2_592_000),

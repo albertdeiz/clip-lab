@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PlaybackUrlResponse } from "@clip-lab/contracts";
 import { useAuth } from "../lib/auth-context";
 import { TranscriptPanel } from "./transcript-panel";
+import { HighlightsPanel } from "./highlights-panel";
 
 export function VideoPlayer({
   videoId,
@@ -99,6 +100,9 @@ export function VideoPlayer({
           )}
         </div>
 
+        <div className="border-t border-neutral-800">
+          <HighlightsPanel videoId={videoId} onSeek={seek} />
+        </div>
         <div className="border-t border-neutral-800">
           <TranscriptPanel
             videoId={videoId}
