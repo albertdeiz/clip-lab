@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VideoStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  email         String         @unique
+  passwordHash  String? // null si la cuenta es solo OAuth
+  emailVerified Boolean        @default(false)
+  storageUsed   BigInt         @default(0) // bytes acumulados
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  oauthAccounts OAuthAccount[]
+  videos        Video[]
+  refreshTokens RefreshToken[]
+}
+
+model OAuthAccount {
+  id             String @id @default(uuid()) @db.Uuid
+  userId         String @db.Uuid
+  provider       String // 'google'
+  providerUserId String
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique // sha256 del token opaco
+  familyId  String    @db.Uuid // rotación + detección de reuso
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model Video {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @db.Uuid
+  title       String
+  status      VideoStatus @default(UPLOADING)
+  storageKey  String      @unique
+  sizeBytes   BigInt?
+  durationSec Float?
+  width       Int?
+  height      Int?
+  fps         Float?
+  codec       String?
+  container   String?
+  bitrate     Int?
+  failReason  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  upload      Upload?
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+}
+
+model Upload {
+  id            String    @id @default(uuid()) @db.Uuid
+  videoId       String    @unique @db.Uuid
+  s3UploadId    String
+  partSizeBytes Int
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  video         Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+}
+
+model OutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  aggregateType String // 'Video'
+  aggregateId   String    @db.Uuid
+  type          String // 'VideoUploaded'
+  payload       Json
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime? // null = pendiente (relay se enciende en Fase 2)
+
+  @@index([publishedAt, createdAt])
+}
