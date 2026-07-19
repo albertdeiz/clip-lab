@@ -10,8 +10,17 @@ import {
 import { loadEnv } from "@clip-lab/config";
 import { transcribe } from "./transcriber.js";
 import { detectHighlights } from "./highlights/job.js";
+import { NonRetryableError } from "./errors.js";
 
 const env = loadEnv();
+
+const MAX_ATTEMPTS = 5;
+const BASE_DELAY_MS = 5_000;
+const MAX_DELAY_MS = 300_000; // 5 min
+
+function backoffMs(attempts: number): number {
+  return Math.min(BASE_DELAY_MS * 2 ** attempts, MAX_DELAY_MS);
+}
 
 function log(msg: string): void {
   process.stdout.write(`[worker] ${msg}\n`);
@@ -33,7 +42,7 @@ async function main(): Promise<void> {
     });
   };
 
-  // Registra una cola de trabajo con su DLQ y un handler idempotente.
+  // Registra una cola de trabajo con DLQ, cola de reintento (backoff) y handler.
   async function consumeQueue<T>(
     queue: string,
     dlq: string,
@@ -42,14 +51,23 @@ async function main(): Promise<void> {
     handle: (payload: T) => Promise<void>,
     label: string,
   ): Promise<void> {
+    const retryQueue = `${queue}.retry`;
     await channel.assertQueue(dlq, { durable: true });
-    await channel.bindQueue(dlq, DLX, queue); // DLX enruta por el nombre de la cola origen
+    await channel.bindQueue(dlq, DLX, queue);
+    // Cola de espera: los mensajes vencen tras `expiration` y vuelven a la cola
+    // principal (dead-letter al EXCHANGE con el routing key original).
+    await channel.assertQueue(retryQueue, {
+      durable: true,
+      deadLetterExchange: EXCHANGE,
+      deadLetterRoutingKey: routingKey,
+    });
     await channel.assertQueue(queue, {
       durable: true,
       deadLetterExchange: DLX,
-      deadLetterRoutingKey: queue, // los fallos de esta cola van a SU dlq
+      deadLetterRoutingKey: queue,
     });
     await channel.bindQueue(queue, EXCHANGE, routingKey);
+
     await channel.consume(queue, (msg) => {
       if (!msg) return;
       void (async () => {
@@ -59,8 +77,27 @@ async function main(): Promise<void> {
           channel.ack(msg);
           log(`✓ ${label}`);
         } catch (err) {
-          log(`✗ ${label}: ${String(err)}`);
-          channel.nack(msg, false, false); // → DLQ vía DLX
+          const attempts = Number(msg.properties.headers?.["x-attempts"] ?? 0);
+          const retryable =
+            !(err instanceof NonRetryableError) && attempts + 1 < MAX_ATTEMPTS;
+          if (retryable) {
+            const delay = backoffMs(attempts);
+            channel.sendToQueue(retryQueue, msg.content, {
+              persistent: true,
+              expiration: String(delay),
+              headers: { ...msg.properties.headers, "x-attempts": attempts + 1 },
+            });
+            log(
+              `↻ ${label}: reintento ${attempts + 1}/${MAX_ATTEMPTS} en ${delay / 1000}s (${String(err)})`,
+            );
+          } else {
+            channel.sendToQueue(dlq, msg.content, {
+              persistent: true,
+              headers: msg.properties.headers,
+            });
+            log(`✗ ${label}: a DLQ tras ${attempts} intento(s) (${String(err)})`);
+          }
+          channel.ack(msg); // ack del original; el reintento/park ya se encoló
         }
       })();
     });

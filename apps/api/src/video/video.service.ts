@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type {
   VideoListResponse,
   Video as VideoDto,
@@ -8,6 +13,7 @@ import type {
   HighlightsResponse,
   Highlight,
 } from "@clip-lab/contracts";
+import { EventType } from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { StorageService } from "../storage/storage.service.js";
 import { toVideoDto } from "./video.mapper.js";
@@ -116,6 +122,89 @@ export class VideoService {
       items: Array.isArray(set.items) ? (set.items as Highlight[]) : [],
       failReason: set.failReason,
     };
+  }
+
+  /**
+   * Reintenta la detección de highlights: resetea el estado y reencola vía
+   * outbox (re-publica TranscriptGenerated). Útil tras arreglar la config
+   * (p. ej. añadir ANTHROPIC_API_KEY) o ante un fallo transitorio ya agotado.
+   */
+  async retryHighlights(userId: string, id: string): Promise<void> {
+    await this.loadOwned(userId, id);
+    const transcript = await this.prisma.transcript.findUnique({
+      where: { videoId: id },
+    });
+    if (!transcript || transcript.status !== "DONE") {
+      throw new BadRequestException({
+        code: "TRANSCRIPT_NOT_READY",
+        message: "La transcripción aún no está lista",
+      });
+    }
+    const words = Array.isArray(transcript.words) ? transcript.words : [];
+    await this.prisma.$transaction(async (tx) => {
+      await tx.highlightSet.upsert({
+        where: { videoId: id },
+        create: { videoId: id, status: "QUEUED" },
+        update: { status: "QUEUED", failReason: null },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          aggregateType: "Video",
+          aggregateId: id,
+          type: EventType.TranscriptGenerated,
+          payload: {
+            eventId: randomUUID(),
+            type: EventType.TranscriptGenerated,
+            videoId: id,
+            userId,
+            language: transcript.language,
+            model: transcript.model ?? "unknown",
+            wordCount: words.length,
+            occurredAt: new Date().toISOString(),
+          },
+        },
+      });
+    });
+  }
+
+  /**
+   * Reintenta la transcripción: resetea y re-publica VideoUploaded vía outbox.
+   * (Re-transcribir vuelve a disparar highlights en cascada.)
+   */
+  async retryTranscript(userId: string, id: string): Promise<void> {
+    const video = await this.loadOwned(userId, id);
+    if (video.status !== "READY") {
+      throw new BadRequestException({
+        code: "VIDEO_NOT_READY",
+        message: "El video no está listo para transcribir",
+      });
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.transcript.upsert({
+        where: { videoId: id },
+        create: { videoId: id, status: "QUEUED" },
+        update: { status: "QUEUED", failReason: null },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          aggregateType: "Video",
+          aggregateId: id,
+          type: EventType.VideoUploaded,
+          payload: {
+            eventId: randomUUID(),
+            type: EventType.VideoUploaded,
+            videoId: id,
+            userId,
+            storageKey: video.storageKey,
+            sizeBytes: Number(video.sizeBytes ?? 0),
+            durationSec: video.durationSec,
+            container: video.container,
+            codec: video.codec,
+            occurredAt: new Date().toISOString(),
+          },
+        },
+      });
+    });
   }
 
   async remove(userId: string, id: string): Promise<void> {

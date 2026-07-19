@@ -15,6 +15,7 @@ export function TranscriptPanel({
 }) {
   const { authedFetch } = useAuth();
   const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
+  const [nonce, setNonce] = useState(0);
   const activeRef = useRef<HTMLButtonElement>(null);
 
   // Poll mientras la transcripción está en curso.
@@ -40,7 +41,19 @@ export function TranscriptPanel({
       active = false;
       clearTimeout(timer);
     };
-  }, [videoId, authedFetch]);
+  }, [videoId, authedFetch, nonce]);
+
+  async function retry() {
+    try {
+      await authedFetch(`/videos/${videoId}/transcript/retry`, {
+        method: "POST",
+      });
+      setTranscript(null);
+      setNonce((n) => n + 1);
+    } catch {
+      /* seguirá en FAILED */
+    }
+  }
 
   // Auto-scroll a la palabra activa.
   useEffect(() => {
@@ -64,9 +77,17 @@ export function TranscriptPanel({
 
   if (transcript.status === "FAILED") {
     return (
-      <p className="p-4 text-sm text-red-400">
-        {transcript.failReason ?? "No se pudo transcribir"}
-      </p>
+      <div className="flex items-center justify-between gap-3 p-4">
+        <p className="text-sm text-red-400">
+          {transcript.failReason ?? "No se pudo transcribir"}
+        </p>
+        <button
+          onClick={() => void retry()}
+          className="shrink-0 rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-800"
+        >
+          Reintentar
+        </button>
+      </div>
     );
   }
 

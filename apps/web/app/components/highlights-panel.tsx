@@ -19,6 +19,7 @@ export function HighlightsPanel({
 }) {
   const { authedFetch } = useAuth();
   const [data, setData] = useState<HighlightsResponse | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -42,7 +43,19 @@ export function HighlightsPanel({
       active = false;
       clearTimeout(timer);
     };
-  }, [videoId, authedFetch]);
+  }, [videoId, authedFetch, nonce]);
+
+  async function retry() {
+    try {
+      await authedFetch(`/videos/${videoId}/highlights/retry`, {
+        method: "POST",
+      });
+      setData(null);
+      setNonce((n) => n + 1);
+    } catch {
+      /* el estado seguirá en FAILED */
+    }
+  }
 
   if (!data) {
     return <p className="p-4 text-sm text-neutral-500">Cargando highlights…</p>;
@@ -61,9 +74,17 @@ export function HighlightsPanel({
 
   if (data.status === "FAILED") {
     return (
-      <p className="p-4 text-sm text-red-400">
-        {data.failReason ?? "No se pudieron detectar highlights"}
-      </p>
+      <div className="flex items-center justify-between gap-3 p-4">
+        <p className="text-sm text-red-400">
+          {data.failReason ?? "No se pudieron detectar highlights"}
+        </p>
+        <button
+          onClick={() => void retry()}
+          className="shrink-0 rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-800"
+        >
+          Reintentar
+        </button>
+      </div>
     );
   }
 

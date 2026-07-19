@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
@@ -46,6 +47,18 @@ export class VideoController {
   @Get(":id/highlights")
   highlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.videos.highlights(user.id, id);
+  }
+
+  @Post(":id/highlights/retry")
+  @HttpCode(202)
+  retryHighlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.retryHighlights(user.id, id);
+  }
+
+  @Post(":id/transcript/retry")
+  @HttpCode(202)
+  retryTranscript(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.retryTranscript(user.id, id);
   }
 
   @Delete(":id")

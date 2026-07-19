@@ -8,6 +8,7 @@ import {
 } from "@clip-lab/contracts";
 import { loadEnv } from "@clip-lab/config";
 import type { PublishFn } from "../transcriber.js";
+import { NonRetryableError } from "../errors.js";
 import { AnthropicClient } from "./anthropic.js";
 import { HighlightDetector } from "./detector.js";
 import type { Word } from "./chunker.js";
@@ -30,7 +31,9 @@ export async function detectHighlights(
 
   const transcript = await prisma.transcript.findUnique({ where: { videoId } });
   if (!transcript || transcript.status !== "DONE") {
-    throw new Error("Transcript no disponible para detectar highlights");
+    throw new NonRetryableError(
+      "Transcript no disponible para detectar highlights",
+    );
   }
   const words = (
     Array.isArray(transcript.words) ? transcript.words : []
@@ -50,7 +53,7 @@ export async function detectHighlights(
         failReason: "ANTHROPIC_API_KEY no configurado",
       },
     });
-    throw new Error("ANTHROPIC_API_KEY no configurado");
+    throw new NonRetryableError("ANTHROPIC_API_KEY no configurado");
   }
 
   try {
