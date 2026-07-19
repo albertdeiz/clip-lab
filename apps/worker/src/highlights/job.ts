@@ -9,7 +9,7 @@ import {
 import { loadEnv } from "@clip-lab/config";
 import type { PublishFn } from "../transcriber.js";
 import { NonRetryableError } from "../errors.js";
-import { AnthropicClient } from "./anthropic.js";
+import { createLlmProvider } from "../ai/llm/factory.js";
 import { HighlightDetector } from "./detector.js";
 import type { Word } from "./chunker.js";
 
@@ -17,8 +17,8 @@ const env = loadEnv();
 
 /**
  * Detecta highlights para un video ya transcrito. Idempotente por videoId.
- * Si falta ANTHROPIC_API_KEY, marca FAILED con motivo claro (no es un stub:
- * la feature exige la credencial para razonar con el LLM).
+ * El proveedor y el modelo de cada etapa (local/global) se eligen por variables
+ * de entorno; si falta la credencial, el job falla con motivo claro (no-retry).
  */
 export async function detectHighlights(
   payload: TranscriptGeneratedPayload,
@@ -45,20 +45,18 @@ export async function detectHighlights(
     update: { status: "DETECTING", failReason: null },
   });
 
-  if (!env.ANTHROPIC_API_KEY) {
-    await prisma.highlightSet.update({
-      where: { videoId },
-      data: {
-        status: "FAILED",
-        failReason: "ANTHROPIC_API_KEY no configurado",
-      },
-    });
-    throw new NonRetryableError("ANTHROPIC_API_KEY no configurado");
-  }
-
   try {
     const detector = new HighlightDetector(
-      new AnthropicClient(env.ANTHROPIC_API_KEY),
+      createLlmProvider(
+        env.HIGHLIGHT_LOCAL_PROVIDER,
+        { baseUrl: env.HIGHLIGHT_LOCAL_BASE_URL, apiKey: env.HIGHLIGHT_LOCAL_API_KEY },
+        env,
+      ),
+      createLlmProvider(
+        env.HIGHLIGHT_GLOBAL_PROVIDER,
+        { baseUrl: env.HIGHLIGHT_GLOBAL_BASE_URL, apiKey: env.HIGHLIGHT_GLOBAL_API_KEY },
+        env,
+      ),
       {
         localModel: env.HIGHLIGHT_LOCAL_MODEL,
         globalModel: env.HIGHLIGHT_GLOBAL_MODEL,
@@ -97,7 +95,10 @@ export async function detectHighlights(
       where: { videoId },
       data: {
         status: "FAILED",
-        failReason: "No se pudieron detectar highlights",
+        failReason:
+          err instanceof NonRetryableError
+            ? err.message
+            : "No se pudieron detectar highlights",
       },
     });
     throw err;

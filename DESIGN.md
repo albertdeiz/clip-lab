@@ -128,6 +128,19 @@ Summary; detail in [`docs/COST.md`](./docs/COST.md).
 - **Structured JSON outputs**, prompt caching, and the Batch API to minimize cost.
 - Goal: LLM as a **small fraction** of total cost (Whisper/GPU render dominate).
 
+### Provider-agnostic AI (generic registry, env-configurable per process)
+AI is consumed through vendor-agnostic interfaces (`apps/worker/src/ai/llm` and
+`.../transcription`) plus a **provider registry** (`ai/registry.ts`). Two kinds —
+`anthropic` (native) and `openai` (OpenAI-compatible) — back a set of named
+presets (`deepseek`, `kimi`/`moonshot`, `qwen`, `groq`, `openrouter`, `together`,
+`ollama`, `openai`, `anthropic`); any other name is treated as a custom
+OpenAI-compatible endpoint via per-process `<PROCESS>_BASE_URL` + `_API_KEY`
+(covers self-hosted / ngrok / vLLM). Each process (transcription, local per-chunk,
+global rerank) selects provider + model independently, so vendors can be mixed.
+Switching vendor/model is a variable change, not a code change; a new preset is
+one line in the registry. Missing config fails the job non-retryably with a clear
+reason. See [`CLAUDE.md`](./CLAUDE.md) → AI providers.
+
 ---
 
 ## 5. Data model (Phase 1–3)

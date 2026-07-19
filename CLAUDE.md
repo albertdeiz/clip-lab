@@ -56,13 +56,55 @@ Ports: web `3000`, api `4000`, postgres `5432`, redis `6379`,
 rabbitmq `5672`/`15672`, minio `9000`/`9001`.
 Useful endpoints: `GET /health/ready`, Swagger at `/docs`.
 
-> The **worker** needs `python3` + `faster-whisper` (self-hosted Whisper) and uses
-> the npm-bundled `ffmpeg`. Model configurable via `WHISPER_MODEL`
-> (`tiny.en`/`base` in dev; `medium`/`large-v3` with GPU in prod).
->
-> **Highlight detection** (Phase 3) requires `ANTHROPIC_API_KEY` in `.env`.
-> Without it, the highlights job ends `FAILED` with a clear reason. Configurable
-> models: `HIGHLIGHT_LOCAL_MODEL` (Haiku), `HIGHLIGHT_GLOBAL_MODEL` (Sonnet).
+### AI providers (generic registry, configurable per process via env)
+
+AI is provider-agnostic and selectable **per process** by env vars — use any
+model from any vendor without code changes, and mix vendors across processes.
+Abstractions live in `apps/worker/src/ai/`: a common `LlmProvider` /
+`TranscriptionProvider` interface, provider kinds `anthropic` (native) and
+`openai` (OpenAI-compatible), and a **provider registry** (`ai/registry.ts`).
+
+Known presets — you only set the API key and select by name:
+`anthropic`, `openai`, `deepseek`, `kimi`/`moonshot`, `qwen`/`dashscope`,
+`groq`, `openrouter`, `together`, `ollama`. Each reads its own key var
+(`DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`, `DASHSCOPE_API_KEY`, `GROQ_API_KEY`, …).
+
+Any other vendor / self-hosted / tunneled (ngrok, vLLM) → use a free name plus
+the **per-process** `<PROCESS>_BASE_URL` + `<PROCESS>_API_KEY` (these also
+override a preset's base/key for that process).
+
+```bash
+# preset credentials (set only the ones you use)
+ANTHROPIC_API_KEY=...
+DEEPSEEK_API_KEY=...
+MOONSHOT_API_KEY=...        # kimi
+DASHSCOPE_API_KEY=...       # qwen
+
+# process: transcription  (faster-whisper local, or any openai-compatible name)
+TRANSCRIPTION_PROVIDER=faster-whisper        # faster-whisper | openai | groq | custom-name
+WHISPER_MODEL=base                           # faster-whisper (tiny.en/base dev; medium/large-v3 prod GPU)
+TRANSCRIPTION_MODEL=whisper-large-v3         # for API providers
+# TRANSCRIPTION_BASE_URL / TRANSCRIPTION_API_KEY  → override or custom endpoint
+
+# process: highlights local  (e.g. DeepSeek) and global  (e.g. Kimi) — different vendors OK
+HIGHLIGHT_LOCAL_PROVIDER=deepseek
+HIGHLIGHT_LOCAL_MODEL=deepseek-chat
+HIGHLIGHT_GLOBAL_PROVIDER=kimi
+HIGHLIGHT_GLOBAL_MODEL=moonshot-v1-8k
+# HIGHLIGHT_GLOBAL_BASE_URL / HIGHLIGHT_GLOBAL_API_KEY  → override or custom endpoint
+
+# example custom / self-hosted via ngrok:
+# HIGHLIGHT_GLOBAL_PROVIDER=my-vllm
+# HIGHLIGHT_GLOBAL_BASE_URL=https://abc123.ngrok.app/v1
+# HIGHLIGHT_GLOBAL_API_KEY=local
+# HIGHLIGHT_GLOBAL_MODEL=qwen2.5-32b-instruct
+```
+
+> The **worker** needs `python3` + `faster-whisper` only when
+> `TRANSCRIPTION_PROVIDER=faster-whisper`; it uses the npm-bundled `ffmpeg`. If a
+> selected process's credential/base URL is missing, its job ends `FAILED` with a
+> clear reason (non-retryable). Add a new preset by adding one line to
+> `ai/registry.ts`; arbitrary endpoints need no code change.
 
 ## Conventions
 

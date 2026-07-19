@@ -18,12 +18,39 @@ export const envSchema = z.object({
     .url()
     .default("amqp://cliplab:cliplab@localhost:5672"),
 
-  WHISPER_MODEL: z.string().default("base"),
-
-  // --- Detección de highlights (LLM) ---
+  // --- Credenciales de proveedores de IA (define solo las que uses) ---
+  // Presets conocidos leen su key de estas variables; para proveedores
+  // arbitrarios/self-hosted usa las variables por-proceso *_API_KEY / *_BASE_URL.
   ANTHROPIC_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  DEEPSEEK_API_KEY: z.string().optional(),
+  MOONSHOT_API_KEY: z.string().optional(), // Kimi
+  DASHSCOPE_API_KEY: z.string().optional(), // Qwen (Alibaba)
+  GROQ_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  TOGETHER_API_KEY: z.string().optional(),
+  OLLAMA_API_KEY: z.string().optional(),
+
+  // --- Proceso: transcripción ---
+  // provider: 'faster-whisper' | cualquier preset openai-compatible | 'custom'
+  TRANSCRIPTION_PROVIDER: z.string().default("faster-whisper"),
+  WHISPER_MODEL: z.string().default("base"), // faster-whisper
+  TRANSCRIPTION_MODEL: z.string().default("whisper-1"),
+  TRANSCRIPTION_BASE_URL: z.string().url().optional(), // override / custom
+  TRANSCRIPTION_API_KEY: z.string().optional(), // override / custom
+
+  // --- Proceso: highlights (análisis local por chunk) ---
+  HIGHLIGHT_LOCAL_PROVIDER: z.string().default("anthropic"),
   HIGHLIGHT_LOCAL_MODEL: z.string().default("claude-haiku-4-5"),
+  HIGHLIGHT_LOCAL_BASE_URL: z.string().url().optional(),
+  HIGHLIGHT_LOCAL_API_KEY: z.string().optional(),
+
+  // --- Proceso: highlights (rerank global) ---
+  HIGHLIGHT_GLOBAL_PROVIDER: z.string().default("anthropic"),
   HIGHLIGHT_GLOBAL_MODEL: z.string().default("claude-sonnet-5"),
+  HIGHLIGHT_GLOBAL_BASE_URL: z.string().url().optional(),
+  HIGHLIGHT_GLOBAL_API_KEY: z.string().optional(),
+
   CHUNK_SECONDS: z.coerce.number().int().positive().default(150),
   CHUNK_OVERLAP_SECONDS: z.coerce.number().int().nonnegative().default(20),
   HIGHLIGHTS_TARGET: z.coerce.number().int().positive().default(10),

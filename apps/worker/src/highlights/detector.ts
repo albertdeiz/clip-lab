@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { AnthropicClient } from "./anthropic.js";
+import type { LlmProvider } from "../ai/llm/types.js";
 import {
   buildChunks,
   aggregate,
@@ -33,13 +33,15 @@ const localSchema = z.object({
   ),
 });
 
-const localInputSchema = {
+const localJsonSchema = {
   type: "object",
+  additionalProperties: false,
   properties: {
     candidates: {
       type: "array",
       items: {
         type: "object",
+        additionalProperties: false,
         properties: {
           start: { type: "number" },
           end: { type: "number" },
@@ -66,13 +68,15 @@ const globalSchema = z.object({
   ),
 });
 
-const globalInputSchema = {
+const globalJsonSchema = {
   type: "object",
+  additionalProperties: false,
   properties: {
     highlights: {
       type: "array",
       items: {
         type: "object",
+        additionalProperties: false,
         properties: {
           start: { type: "number" },
           end: { type: "number" },
@@ -111,9 +115,14 @@ export interface DetectorOptions {
   target: number;
 }
 
+/**
+ * Detector jerárquico agnóstico de proveedor: recibe un LlmProvider por etapa
+ * (local y global), configurables por variables de entorno.
+ */
 export class HighlightDetector {
   constructor(
-    private readonly llm: AnthropicClient,
+    private readonly localLlm: LlmProvider,
+    private readonly globalLlm: LlmProvider,
     private readonly opts: DetectorOptions,
   ) {}
 
@@ -132,15 +141,16 @@ export class HighlightDetector {
     );
     let cost = 0;
 
-    // 1) Análisis local por chunk, en paralelo (Haiku). Rúbrica cacheada.
+    // 1) Análisis local por chunk, en paralelo. Rúbrica cacheada (si el
+    //    provider lo soporta).
     const perChunk = await mapLimit(chunks, 5, async (chunk) => {
-      const { data, costUsd } = await this.llm.structured({
+      const { data, costUsd } = await this.localLlm.structured({
         model: this.opts.localModel,
         system: LOCAL_SYSTEM,
         user: `Rango del fragmento: ${chunk.start.toFixed(1)}s a ${chunk.end.toFixed(1)}s.\n\nTranscripción:\n${chunk.text}`,
-        toolName: "reportar_candidatos",
-        inputSchema: localInputSchema,
-        validate: localSchema,
+        schemaName: "candidates",
+        jsonSchema: localJsonSchema,
+        validate: (d) => localSchema.parse(d),
         maxTokens: 1024,
         cacheSystem: true,
       });
@@ -162,20 +172,20 @@ export class HighlightDetector {
       };
     }
 
-    // 3) Rerank global + títulos (Sonnet, 1 llamada). Contexto compacto.
+    // 3) Rerank global + títulos (1 llamada). Contexto compacto.
     const compact = top
       .map(
         (c, i) =>
           `${i + 1}. [${c.start.toFixed(1)}-${c.end.toFixed(1)}s] score=${c.score.toFixed(2)} hook="${c.hook}" | ${c.reason}`,
       )
       .join("\n");
-    const { data, costUsd } = await this.llm.structured({
+    const { data, costUsd } = await this.globalLlm.structured({
       model: this.opts.globalModel,
       system: GLOBAL_SYSTEM,
       user: `Elige los mejores ${this.opts.target} clips finales de estos candidatos:\n\n${compact}`,
-      toolName: "reportar_highlights",
-      inputSchema: globalInputSchema,
-      validate: globalSchema,
+      schemaName: "highlights",
+      jsonSchema: globalJsonSchema,
+      validate: (d) => globalSchema.parse(d),
       maxTokens: 2048,
     });
     cost += costUsd;

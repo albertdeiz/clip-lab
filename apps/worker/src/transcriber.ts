@@ -16,10 +16,9 @@ import {
   type TranscriptGeneratedPayload,
 } from "@clip-lab/contracts";
 import { loadEnv } from "@clip-lab/config";
+import { createTranscriptionProvider } from "./ai/transcription/factory.js";
 
 const env = loadEnv();
-const PYTHON_BIN = process.env.PYTHON_BIN ?? "python3";
-const PY_SCRIPT = path.join(__dirname, "..", "python", "transcribe.py");
 
 const s3 = new S3Client({
   endpoint: env.S3_ENDPOINT,
@@ -31,12 +30,6 @@ const s3 = new S3Client({
   },
 });
 
-interface WhisperResult {
-  language: string | null;
-  text: string;
-  words: Array<{ w: string; start: number; end: number }>;
-}
-
 async function downloadToFile(key: string, dest: string): Promise<void> {
   const res = await s3.send(
     new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: key }),
@@ -44,20 +37,26 @@ async function downloadToFile(key: string, dest: string): Promise<void> {
   await pipeline(res.Body as Readable, createWriteStream(dest));
 }
 
-function run(
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args);
-    let stdout = "";
+async function extractAudio(input: string, output: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(ffmpegInstaller.path, [
+      "-y",
+      "-i",
+      input,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-f",
+      "wav",
+      output,
+    ]);
     let stderr = "";
     const timer = setTimeout(() => {
       proc.kill("SIGKILL");
-      reject(new Error(`${cmd} timeout`));
-    }, timeoutMs);
-    proc.stdout.on("data", (d) => (stdout += d));
+      reject(new Error("ffmpeg timeout"));
+    }, 120_000);
     proc.stderr.on("data", (d) => (stderr += d));
     proc.on("error", (err) => {
       clearTimeout(timer);
@@ -65,29 +64,10 @@ function run(
     });
     proc.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) reject(new Error(`${cmd} exit ${code}: ${stderr}`));
-      else resolve({ stdout, stderr });
+      if (code !== 0) reject(new Error(`ffmpeg exit ${code}: ${stderr}`));
+      else resolve();
     });
   });
-}
-
-async function extractAudio(input: string, output: string): Promise<void> {
-  await run(
-    ffmpegInstaller.path,
-    ["-y", "-i", input, "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", output],
-    120_000,
-  );
-}
-
-async function runWhisper(wav: string): Promise<WhisperResult> {
-  const { stdout } = await run(
-    PYTHON_BIN,
-    [PY_SCRIPT, wav, env.WHISPER_MODEL],
-    600_000,
-  );
-  const parsed = JSON.parse(stdout) as WhisperResult & { error?: string };
-  if (parsed.error) throw new Error(parsed.error);
-  return parsed;
 }
 
 export type PublishFn = (
@@ -96,8 +76,9 @@ export type PublishFn = (
 ) => Promise<void> | void;
 
 /**
- * Procesa un job de transcripción. Idempotente: si el transcript ya está DONE
- * para el video, no reprocesa.
+ * Transcribe un video. Idempotente: si el transcript ya está DONE, no
+ * reprocesa. El proveedor (faster-whisper local u OpenAI-compatible) se elige
+ * por variables de entorno.
  */
 export async function transcribe(
   payload: VideoUploadedPayload,
@@ -108,9 +89,11 @@ export async function transcribe(
   const existing = await prisma.transcript.findUnique({ where: { videoId } });
   if (existing?.status === "DONE") return; // idempotencia
 
+  const provider = createTranscriptionProvider(env);
+
   await prisma.transcript.upsert({
     where: { videoId },
-    create: { videoId, status: "TRANSCRIBING", model: env.WHISPER_MODEL },
+    create: { videoId, status: "TRANSCRIBING", model: provider.modelLabel },
     update: { status: "TRANSCRIBING", failReason: null },
   });
 
@@ -123,14 +106,14 @@ export async function transcribe(
       .update(await readFile(videoPath))
       .digest("hex");
     await extractAudio(videoPath, wavPath);
-    const result = await runWhisper(wavPath);
+    const result = await provider.transcribe(wavPath);
 
     await prisma.transcript.update({
       where: { videoId },
       data: {
         status: "DONE",
         language: result.language,
-        model: env.WHISPER_MODEL,
+        model: provider.modelLabel,
         text: result.text,
         words: result.words as unknown as Prisma.InputJsonValue,
         contentHash,
@@ -143,7 +126,7 @@ export async function transcribe(
       videoId,
       userId,
       language: result.language,
-      model: env.WHISPER_MODEL,
+      model: provider.modelLabel,
       wordCount: result.words.length,
       occurredAt: new Date().toISOString(),
     };
