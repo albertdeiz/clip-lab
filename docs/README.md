@@ -14,6 +14,8 @@ Index of the project context.
   - [`iterations/fase-1-ingesta.md`](./iterations/fase-1-ingesta.md)
   - [`iterations/fase-2-transcripcion.md`](./iterations/fase-2-transcripcion.md)
   - [`iterations/fase-3-highlights.md`](./iterations/fase-3-highlights.md)
+- [`manual-highlights.md`](./manual-highlights.md) — human-in-the-loop stopgap to
+  produce highlights without an LLM provider (`pnpm highlights:manual`).
 
 ## How we work
 

@@ -16,7 +16,8 @@
     "db:migrate": "pnpm --filter @clip-lab/db migrate:dev",
     "db:deploy": "pnpm --filter @clip-lab/db migrate:deploy",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
-    "infra:down": "docker compose -f infra/docker-compose.yml down"
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "highlights:manual": "node scripts/manual-highlights.cjs"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
