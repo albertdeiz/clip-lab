@@ -7,6 +7,9 @@ import { RedisModule } from "./common/redis.module.js";
 import { HttpExceptionFilter } from "./common/http-exception.filter.js";
 import { HealthModule } from "./health/health.module.js";
 import { AuthModule } from "./auth/auth.module.js";
+import { StorageModule } from "./storage/storage.module.js";
+import { UploadModule } from "./upload/upload.module.js";
+import { VideoModule } from "./video/video.module.js";
 
 @Module({
   imports: [
@@ -23,9 +26,11 @@ import { AuthModule } from "./auth/auth.module.js";
     ConfigModule,
     PrismaModule,
     RedisModule,
+    StorageModule,
     HealthModule,
     AuthModule,
-    // Fase 1 (siguiente): UploadModule, VideoModule
+    UploadModule,
+    VideoModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
 })

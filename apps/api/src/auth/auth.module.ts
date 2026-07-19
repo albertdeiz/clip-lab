@@ -20,6 +20,6 @@ import { RateLimitGuard } from "./guards/rate-limit.guard.js";
   ],
   controllers: [AuthController],
   providers: [AuthService, GoogleService, JwtAuthGuard, RateLimitGuard],
-  exports: [JwtAuthGuard],
+  exports: [JwtAuthGuard, JwtModule],
 })
 export class AuthModule {}
