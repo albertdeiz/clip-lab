@@ -1,8 +1,12 @@
 import { Module } from "@nestjs/common";
+import { APP_FILTER } from "@nestjs/core";
 import { LoggerModule } from "nestjs-pino";
 import { ConfigModule } from "./config/config.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { RedisModule } from "./common/redis.module.js";
+import { HttpExceptionFilter } from "./common/http-exception.filter.js";
 import { HealthModule } from "./health/health.module.js";
+import { AuthModule } from "./auth/auth.module.js";
 
 @Module({
   imports: [
@@ -18,8 +22,11 @@ import { HealthModule } from "./health/health.module.js";
     }),
     ConfigModule,
     PrismaModule,
+    RedisModule,
     HealthModule,
-    // Fase 1 (siguiente paso): AuthModule, UploadModule, VideoModule
+    AuthModule,
+    // Fase 1 (siguiente): UploadModule, VideoModule
   ],
+  providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
 })
 export class AppModule {}

@@ -9,6 +9,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { Logger } from "nestjs-pino";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
 import { loadEnv } from "@clip-lab/config";
 import { AppModule } from "./app.module.js";
 
@@ -24,11 +25,16 @@ async function bootstrap(): Promise<void> {
   app.useLogger(app.get(Logger));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  await app.register(helmet);
-  await app.register(cors, {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  // Los tipos de los plugins de Fastify chocan con el register de Nest por el
+  // declaration-merging de @fastify/cookie; el cast es el patrón aceptado.
+  await app.register(helmet as any);
+  await app.register(cors as any, {
     origin: env.FRONTEND_ORIGIN,
     credentials: true,
   });
+  await app.register(cookie as any);
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   const config = new DocumentBuilder()
     .setTitle("ClipLab API")
