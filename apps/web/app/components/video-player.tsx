@@ -16,6 +16,7 @@ export function VideoPlayer({
   const { authedFetch } = useAuth();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -60,8 +61,28 @@ export function VideoPlayer({
           {error ? (
             <p className="p-10 text-center text-sm text-red-300">{error}</p>
           ) : url ? (
-            // eslint-disable-next-line jsx-a11y/media-has-caption
-            <video src={url} controls autoPlay className="max-h-[70vh] w-full" />
+            <>
+              {/* Sin autoPlay: la reproducción la inicia el gesto del usuario en
+                  los controles nativos, para que el audio no quede silenciado
+                  por la política de autoplay del navegador. */}
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video
+                src={url}
+                controls
+                preload="metadata"
+                className="max-h-[70vh] w-full"
+                onError={() =>
+                  setPlaybackError(
+                    "Tu navegador no puede reproducir este formato o códec.",
+                  )
+                }
+              />
+              {playbackError && (
+                <p className="p-3 text-center text-sm text-amber-300">
+                  {playbackError}
+                </p>
+              )}
+            </>
           ) : (
             <p className="p-10 text-center text-sm text-neutral-500">
               Cargando…
