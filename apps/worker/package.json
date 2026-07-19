@@ -1,0 +1,26 @@
+{
+  "name": "@clip-lab/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.720.0",
+    "@clip-lab/config": "workspace:*",
+    "@clip-lab/contracts": "workspace:*",
+    "@clip-lab/db": "workspace:*",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "amqplib": "^0.10.5"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.6",
+    "@types/node": "^22.10.2",
+    "dotenv-cli": "^8.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

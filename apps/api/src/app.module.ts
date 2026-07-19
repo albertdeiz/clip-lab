@@ -8,6 +8,7 @@ import { HttpExceptionFilter } from "./common/http-exception.filter.js";
 import { HealthModule } from "./health/health.module.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { StorageModule } from "./storage/storage.module.js";
+import { MessagingModule } from "./messaging/messaging.module.js";
 import { UploadModule } from "./upload/upload.module.js";
 import { VideoModule } from "./video/video.module.js";
 
@@ -27,6 +28,7 @@ import { VideoModule } from "./video/video.module.js";
     PrismaModule,
     RedisModule,
     StorageModule,
+    MessagingModule,
     HealthModule,
     AuthModule,
     UploadModule,

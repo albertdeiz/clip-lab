@@ -12,6 +12,7 @@ import { z } from "zod";
 
 export const EventType = {
   VideoUploaded: "VideoUploaded",
+  TranscriptGenerated: "TranscriptGenerated",
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];
@@ -31,9 +32,25 @@ export const videoUploadedPayloadSchema = z.object({
 
 export type VideoUploadedPayload = z.infer<typeof videoUploadedPayloadSchema>;
 
+export const transcriptGeneratedPayloadSchema = z.object({
+  eventId: z.string().uuid(),
+  type: z.literal(EventType.TranscriptGenerated),
+  videoId: z.string().uuid(),
+  userId: z.string().uuid(),
+  language: z.string().nullable(),
+  model: z.string(),
+  wordCount: z.number().int().nonnegative(),
+  occurredAt: z.string().datetime(),
+});
+
+export type TranscriptGeneratedPayload = z.infer<
+  typeof transcriptGeneratedPayloadSchema
+>;
+
 /** Union discriminada para el relay del outbox (crece por fase). */
 export const domainEventSchema = z.discriminatedUnion("type", [
   videoUploadedPayloadSchema,
+  transcriptGeneratedPayloadSchema,
 ]);
 
 export type DomainEvent = z.infer<typeof domainEventSchema>;

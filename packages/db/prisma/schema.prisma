@@ -14,6 +14,13 @@ enum VideoStatus {
   FAILED
 }
 
+enum TranscriptStatus {
+  QUEUED
+  TRANSCRIBING
+  DONE
+  FAILED
+}
+
 model User {
   id            String         @id @default(uuid()) @db.Uuid
   email         String         @unique
@@ -70,10 +77,26 @@ model Video {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   upload      Upload?
+  transcript  Transcript?
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
+}
+
+model Transcript {
+  id          String           @id @default(uuid()) @db.Uuid
+  videoId     String           @unique @db.Uuid
+  status      TranscriptStatus @default(QUEUED)
+  language    String?
+  model       String?
+  text        String?
+  words       Json? // [{ w, start, end }] word-level
+  contentHash String? // hash del input → caché / reproceso incremental
+  failReason  String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  video       Video            @relation(fields: [videoId], references: [id], onDelete: Cascade)
 }
 
 model Upload {

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PlaybackUrlResponse } from "@clip-lab/contracts";
 import { useAuth } from "../lib/auth-context";
+import { TranscriptPanel } from "./transcript-panel";
 
 export function VideoPlayer({
   videoId,
@@ -14,9 +15,11 @@ export function VideoPlayer({
   onClose: () => void;
 }) {
   const { authedFetch } = useAuth();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -35,6 +38,13 @@ export function VideoPlayer({
     };
   }, [videoId, authedFetch]);
 
+  const seek = (sec: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = sec;
+      void videoRef.current.play().catch(() => undefined);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6"
@@ -44,10 +54,10 @@ export function VideoPlayer({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl space-y-3"
+        className="w-full max-w-3xl overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-4 py-3">
           <h2 className="truncate text-sm text-neutral-300">{title}</h2>
           <button
             onClick={onClose}
@@ -57,20 +67,21 @@ export function VideoPlayer({
             ✕
           </button>
         </div>
-        <div className="overflow-hidden rounded-xl bg-black">
+
+        <div className="bg-black">
           {error ? (
             <p className="p-10 text-center text-sm text-red-300">{error}</p>
           ) : url ? (
             <>
-              {/* Sin autoPlay: la reproducción la inicia el gesto del usuario en
-                  los controles nativos, para que el audio no quede silenciado
-                  por la política de autoplay del navegador. */}
+              {/* Sin autoPlay: el play nativo (gesto del usuario) reproduce con audio. */}
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
+                ref={videoRef}
                 src={url}
                 controls
                 preload="metadata"
-                className="max-h-[70vh] w-full"
+                className="max-h-[60vh] w-full"
+                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onError={() =>
                   setPlaybackError(
                     "Tu navegador no puede reproducir este formato o códec.",
@@ -84,10 +95,16 @@ export function VideoPlayer({
               )}
             </>
           ) : (
-            <p className="p-10 text-center text-sm text-neutral-500">
-              Cargando…
-            </p>
+            <p className="p-10 text-center text-sm text-neutral-500">Cargando…</p>
           )}
+        </div>
+
+        <div className="border-t border-neutral-800">
+          <TranscriptPanel
+            videoId={videoId}
+            currentTime={currentTime}
+            onSeek={seek}
+          />
         </div>
       </div>
     </div>

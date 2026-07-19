@@ -38,6 +38,11 @@ export class VideoController {
     return this.videos.playbackUrl(user.id, id);
   }
 
+  @Get(":id/transcript")
+  transcript(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.transcript(user.id, id);
+  }
+
   @Delete(":id")
   @HttpCode(204)
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {

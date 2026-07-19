@@ -13,6 +13,12 @@ export const envSchema = z.object({
 
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
+  RABBITMQ_URL: z
+    .string()
+    .url()
+    .default("amqp://cliplab:cliplab@localhost:5672"),
+
+  WHISPER_MODEL: z.string().default("base"),
 
   JWT_SECRET: z.string().min(32, "JWT_SECRET debe tener al menos 32 caracteres"),
   ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(900),

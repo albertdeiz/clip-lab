@@ -3,6 +3,8 @@ import type {
   VideoListResponse,
   Video as VideoDto,
   PlaybackUrlResponse,
+  TranscriptResponse,
+  TranscriptWord,
 } from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { StorageService } from "../storage/storage.service.js";
@@ -63,6 +65,32 @@ export class VideoService {
     }
     const url = await this.storage.presignGetObject(video.storageKey);
     return { url, expiresInSec: this.storage.presignTtlSec };
+  }
+
+  async transcript(userId: string, id: string): Promise<TranscriptResponse> {
+    await this.loadOwned(userId, id); // authz
+    const t = await this.prisma.transcript.findUnique({
+      where: { videoId: id },
+    });
+    if (!t) {
+      // Aún no encolado/creado por el worker.
+      return {
+        status: "QUEUED",
+        language: null,
+        model: null,
+        text: null,
+        words: [],
+        failReason: null,
+      };
+    }
+    return {
+      status: t.status,
+      language: t.language,
+      model: t.model,
+      text: t.text,
+      words: Array.isArray(t.words) ? (t.words as TranscriptWord[]) : [],
+      failReason: t.failReason,
+    };
   }
 
   async remove(userId: string, id: string): Promise<void> {

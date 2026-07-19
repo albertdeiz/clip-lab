@@ -103,6 +103,32 @@ export const playbackUrlResponseSchema = z.object({
 });
 export type PlaybackUrlResponse = z.infer<typeof playbackUrlResponseSchema>;
 
+// --- Transcript ---
+export const transcriptStatusSchema = z.enum([
+  "QUEUED",
+  "TRANSCRIBING",
+  "DONE",
+  "FAILED",
+]);
+export type TranscriptStatus = z.infer<typeof transcriptStatusSchema>;
+
+export const transcriptWordSchema = z.object({
+  w: z.string(),
+  start: z.number(),
+  end: z.number(),
+});
+export type TranscriptWord = z.infer<typeof transcriptWordSchema>;
+
+export const transcriptResponseSchema = z.object({
+  status: transcriptStatusSchema,
+  language: z.string().nullable(),
+  model: z.string().nullable(),
+  text: z.string().nullable(),
+  words: z.array(transcriptWordSchema),
+  failReason: z.string().nullable(),
+});
+export type TranscriptResponse = z.infer<typeof transcriptResponseSchema>;
+
 // --- Error uniforme ---
 export const apiErrorSchema = z.object({
   error: z.object({

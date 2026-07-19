@@ -1,0 +1,110 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { TranscriptResponse } from "@clip-lab/contracts";
+import { useAuth } from "../lib/auth-context";
+
+export function TranscriptPanel({
+  videoId,
+  currentTime,
+  onSeek,
+}: {
+  videoId: string;
+  currentTime: number;
+  onSeek: (sec: number) => void;
+}) {
+  const { authedFetch } = useAuth();
+  const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  // Poll mientras la transcripción está en curso.
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const t = await authedFetch<TranscriptResponse>(
+          `/videos/${videoId}/transcript`,
+        );
+        if (!active) return;
+        setTranscript(t);
+        if (t.status === "QUEUED" || t.status === "TRANSCRIBING") {
+          timer = setTimeout(poll, 2000);
+        }
+      } catch {
+        /* reintenta en el próximo montaje */
+      }
+    };
+    void poll();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [videoId, authedFetch]);
+
+  // Auto-scroll a la palabra activa.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentTime]);
+
+  if (!transcript) {
+    return <p className="p-4 text-sm text-neutral-500">Cargando transcript…</p>;
+  }
+
+  if (transcript.status === "QUEUED" || transcript.status === "TRANSCRIBING") {
+    return (
+      <p className="flex items-center gap-2 p-4 text-sm text-neutral-400">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+        {transcript.status === "QUEUED"
+          ? "En cola para transcribir…"
+          : "Transcribiendo audio…"}
+      </p>
+    );
+  }
+
+  if (transcript.status === "FAILED") {
+    return (
+      <p className="p-4 text-sm text-red-400">
+        {transcript.failReason ?? "No se pudo transcribir"}
+      </p>
+    );
+  }
+
+  if (transcript.words.length === 0) {
+    return (
+      <p className="p-4 text-sm text-neutral-500">
+        {transcript.text || "Sin diálogo detectado."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="max-h-48 overflow-y-auto p-4 text-sm leading-relaxed">
+      <div className="mb-2 flex items-center gap-2 text-xs text-neutral-600">
+        <span className="rounded bg-neutral-800 px-1.5 py-0.5 uppercase">
+          {transcript.language ?? "?"}
+        </span>
+        <span>Transcript · click en una palabra para saltar</span>
+      </div>
+      <p className="flex flex-wrap gap-x-1 gap-y-0.5">
+        {transcript.words.map((word, i) => {
+          const active = currentTime >= word.start && currentTime < word.end;
+          return (
+            <button
+              key={i}
+              ref={active ? activeRef : undefined}
+              onClick={() => onSeek(word.start)}
+              className={`rounded px-0.5 transition ${
+                active
+                  ? "bg-neutral-100 text-neutral-900"
+                  : "text-neutral-300 hover:bg-neutral-800"
+              }`}
+            >
+              {word.w.trim()}
+            </button>
+          );
+        })}
+      </p>
+    </div>
+  );
+}
