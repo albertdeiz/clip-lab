@@ -12,6 +12,7 @@ import type {
   TranscriptWord,
   HighlightsResponse,
   Highlight,
+  UpdateHighlightsInput,
   ClipListResponse,
 } from "@clip-lab/contracts";
 import { EventType } from "@clip-lab/contracts";
@@ -116,6 +117,35 @@ export class VideoService {
         failReason: null,
       };
     }
+    return {
+      status: set.status,
+      model: set.model,
+      costUsd: set.costUsd === null ? null : Number(set.costUsd),
+      items: Array.isArray(set.items) ? (set.items as Highlight[]) : [],
+      failReason: set.failReason,
+    };
+  }
+
+  /** Edición manual: reemplaza la lista de highlights (marca DONE). */
+  async updateHighlights(
+    userId: string,
+    id: string,
+    input: UpdateHighlightsInput,
+  ): Promise<HighlightsResponse> {
+    await this.loadOwned(userId, id);
+    const items = input.items
+      .filter((h) => h.end > h.start)
+      .sort((a, b) => b.score - a.score);
+    const set = await this.prisma.highlightSet.upsert({
+      where: { videoId: id },
+      create: {
+        videoId: id,
+        status: "DONE",
+        model: "manual",
+        items: items as unknown as object,
+      },
+      update: { status: "DONE", failReason: null, items: items as unknown as object },
+    });
     return {
       status: set.status,
       model: set.model,

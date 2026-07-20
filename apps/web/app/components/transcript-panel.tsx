@@ -8,15 +8,18 @@ export function TranscriptPanel({
   videoId,
   currentTime,
   onSeek,
+  activeRange,
 }: {
   videoId: string;
   currentTime: number;
   onSeek: (sec: number) => void;
+  activeRange?: { start: number; end: number } | null;
 }) {
   const { authedFetch } = useAuth();
   const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
   const [nonce, setNonce] = useState(0);
   const activeRef = useRef<HTMLButtonElement>(null);
+  const rangeRef = useRef<HTMLButtonElement>(null);
 
   // Poll mientras la transcripción está en curso.
   useEffect(() => {
@@ -55,10 +58,17 @@ export function TranscriptPanel({
     }
   }
 
-  // Auto-scroll a la palabra activa.
+  // Auto-scroll a la palabra activa (durante reproducción).
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [currentTime]);
+
+  // Al resaltar el rango de una sugerencia, desplázate hasta él.
+  useEffect(() => {
+    if (activeRange) {
+      rangeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [activeRange]);
 
   if (!transcript) {
     return <p className="p-4 text-sm text-neutral-500">Cargando transcript…</p>;
@@ -108,23 +118,36 @@ export function TranscriptPanel({
         <span>Transcript · click en una palabra para saltar</span>
       </div>
       <p className="flex flex-wrap gap-x-1 gap-y-0.5">
-        {transcript.words.map((word, i) => {
-          const active = currentTime >= word.start && currentTime < word.end;
-          return (
-            <button
-              key={i}
-              ref={active ? activeRef : undefined}
-              onClick={() => onSeek(word.start)}
-              className={`rounded px-0.5 transition ${
-                active
-                  ? "bg-neutral-100 text-neutral-900"
-                  : "text-neutral-300 hover:bg-neutral-800"
-              }`}
-            >
-              {word.w.trim()}
-            </button>
-          );
-        })}
+        {(() => {
+          const firstInRange = activeRange
+            ? transcript.words.findIndex(
+                (w) => w.start < activeRange.end && w.end > activeRange.start,
+              )
+            : -1;
+          return transcript.words.map((word, i) => {
+            const active = currentTime >= word.start && currentTime < word.end;
+            const inRange =
+              !!activeRange &&
+              word.start < activeRange.end &&
+              word.end > activeRange.start;
+            return (
+              <button
+                key={i}
+                ref={i === firstInRange ? rangeRef : active ? activeRef : undefined}
+                onClick={() => onSeek(word.start)}
+                className={`rounded px-0.5 transition ${
+                  active
+                    ? "bg-neutral-100 text-neutral-900"
+                    : inRange
+                      ? "bg-violet-500/40 text-white ring-1 ring-violet-400/50"
+                      : "text-neutral-300 hover:bg-neutral-800"
+                }`}
+              >
+                {word.w.trim()}
+              </button>
+            );
+          });
+        })()}
       </p>
     </div>
   );

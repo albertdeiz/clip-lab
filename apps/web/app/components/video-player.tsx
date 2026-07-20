@@ -22,6 +22,10 @@ export function VideoPlayer({
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [activeRange, setActiveRange] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -107,7 +111,12 @@ export function VideoPlayer({
                 )}
               </div>
               <div className="border-t border-neutral-800">
-                <HighlightsPanel videoId={videoId} onSeek={seek} />
+                <HighlightsPanel
+                  videoId={videoId}
+                  currentTime={currentTime}
+                  onSeek={seek}
+                  onHoverRange={setActiveRange}
+                />
               </div>
             </div>
 
@@ -117,6 +126,7 @@ export function VideoPlayer({
                 videoId={videoId}
                 currentTime={currentTime}
                 onSeek={seek}
+                activeRange={activeRange}
               />
             </aside>
           </div>

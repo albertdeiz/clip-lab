@@ -156,6 +156,20 @@ export const highlightsResponseSchema = z.object({
 });
 export type HighlightsResponse = z.infer<typeof highlightsResponseSchema>;
 
+/** Edición manual del set de highlights (reemplaza la lista completa). */
+export const updateHighlightsSchema = z.object({
+  items: z
+    .array(
+      highlightSchema.extend({
+        // score/reason opcionales al editar a mano
+        score: z.number().default(0.5),
+        reason: z.string().default(""),
+      }),
+    )
+    .max(50),
+});
+export type UpdateHighlightsInput = z.infer<typeof updateHighlightsSchema>;
+
 // --- Clips ---
 export const clipStatusSchema = z.enum([
   "QUEUED",

@@ -1,14 +1,21 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import {
+  updateHighlightsSchema,
+  type UpdateHighlightsInput,
+} from "@clip-lab/contracts";
+import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
 import { JwtAuthGuard, type AuthUser } from "../auth/guards/jwt-auth.guard.js";
 import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
 import { VideoService } from "./video.service.js";
@@ -47,6 +54,16 @@ export class VideoController {
   @Get(":id/highlights")
   highlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.videos.highlights(user.id, id);
+  }
+
+  @Patch(":id/highlights")
+  updateHighlights(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateHighlightsSchema))
+    body: UpdateHighlightsInput,
+  ) {
+    return this.videos.updateHighlights(user.id, id, body);
   }
 
   @Post(":id/highlights/retry")
