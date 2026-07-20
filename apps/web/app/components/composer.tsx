@@ -172,7 +172,7 @@ export function Composer() {
   } = useClipEditor();
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex w-full h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-3">
         <span className="text-xs uppercase tracking-widest text-neutral-500">
           Composer ({clips.length})
