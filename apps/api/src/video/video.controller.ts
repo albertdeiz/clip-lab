@@ -66,6 +66,11 @@ export class VideoController {
     return this.videos.updateHighlights(user.id, id, body);
   }
 
+  @Post(":id/highlights/snap")
+  snapHighlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.videos.snapHighlights(user.id, id);
+  }
+
   @Post(":id/highlights/retry")
   @HttpCode(202)
   retryHighlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {

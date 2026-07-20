@@ -63,6 +63,9 @@ export async function detectHighlights(
         chunkSeconds: env.CHUNK_SECONDS,
         overlapSeconds: env.CHUNK_OVERLAP_SECONDS,
         target: env.HIGHLIGHTS_TARGET,
+        minSec: env.HIGHLIGHT_MIN_SEC,
+        maxSec: env.HIGHLIGHT_MAX_SEC,
+        pauseSec: env.SENTENCE_PAUSE_SEC,
       },
     );
     const result = await detector.detect(words);

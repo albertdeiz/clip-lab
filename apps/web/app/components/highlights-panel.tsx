@@ -119,6 +119,19 @@ export function HighlightsPanel({
     }
   }
 
+  async function snapCuts() {
+    try {
+      const res = await authedFetch<HighlightsResponse>(
+        `/videos/${videoId}/highlights/snap`,
+        { method: "POST" },
+      );
+      setItems(res.items);
+      setBaseline(JSON.stringify(res.items));
+    } catch {
+      /* noop */
+    }
+  }
+
   if (!data) return <p className="p-4 text-sm text-neutral-500">Cargando…</p>;
 
   if (data.status === "QUEUED" || data.status === "DETECTING") {
@@ -153,6 +166,13 @@ export function HighlightsPanel({
           Momentos sugeridos ({items.length})
         </span>
         <div className="flex gap-1.5">
+          <button
+            onClick={() => void snapCuts()}
+            className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+            title="Ajustar inicio/fin a frases completas"
+          >
+            Cortes limpios
+          </button>
           <button
             onClick={add}
             className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"

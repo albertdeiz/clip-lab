@@ -14,8 +14,9 @@ import type {
   Highlight,
   UpdateHighlightsInput,
   ClipListResponse,
+  SnapWord,
 } from "@clip-lab/contracts";
-import { EventType } from "@clip-lab/contracts";
+import { EventType, buildSentences, snapRange } from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { StorageService } from "../storage/storage.service.js";
 import { toVideoDto } from "./video.mapper.js";
@@ -123,6 +124,63 @@ export class VideoService {
       costUsd: set.costUsd === null ? null : Number(set.costUsd),
       items: Array.isArray(set.items) ? (set.items as Highlight[]) : [],
       failReason: set.failReason,
+    };
+  }
+
+  /**
+   * Ajusta los highlights actuales a límites de frase (cortes limpios), usando
+   * el transcript. Determinístico, sin IA. Dedup de rangos duplicados.
+   */
+  async snapHighlights(userId: string, id: string): Promise<HighlightsResponse> {
+    await this.loadOwned(userId, id);
+    const set = await this.prisma.highlightSet.findUnique({
+      where: { videoId: id },
+    });
+    if (!set || !Array.isArray(set.items) || set.items.length === 0) {
+      throw new BadRequestException({
+        code: "NO_HIGHLIGHTS",
+        message: "No hay highlights que ajustar",
+      });
+    }
+    const transcript = await this.prisma.transcript.findUnique({
+      where: { videoId: id },
+    });
+    const words = (
+      transcript && Array.isArray(transcript.words) ? transcript.words : []
+    ) as unknown as SnapWord[];
+    if (words.length === 0) {
+      throw new BadRequestException({
+        code: "TRANSCRIPT_NOT_READY",
+        message: "La transcripción no está lista",
+      });
+    }
+    const sentences = buildSentences(words);
+    const seen = new Set<string>();
+    const items = (set.items as Highlight[])
+      .map((h) => {
+        const s = snapRange(h.start, h.end, sentences);
+        return { ...h, start: s.start, end: s.end };
+      })
+      .filter((h) => {
+        const key = `${Math.round(h.start)}-${Math.round(h.end)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const updated = await this.prisma.highlightSet.update({
+      where: { videoId: id },
+      data: { items: items as unknown as object },
+    });
+    return {
+      status: updated.status,
+      model: updated.model,
+      costUsd: updated.costUsd === null ? null : Number(updated.costUsd),
+      items: Array.isArray(updated.items)
+        ? (updated.items as Highlight[])
+        : [],
+      failReason: updated.failReason,
     };
   }
 

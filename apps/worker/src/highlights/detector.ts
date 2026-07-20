@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { buildSentences, snapRange } from "@clip-lab/contracts";
 import type { LlmProvider } from "../ai/llm/types.js";
 import {
   buildChunks,
@@ -10,15 +11,19 @@ import {
 } from "./chunker.js";
 
 const LOCAL_SYSTEM = `Eres un analista de contenido viral para clips cortos verticales.
-Recibes un fragmento de la transcripción de un video, con su rango de tiempo.
-Identifica de 0 a 3 momentos con mayor potencial viral dentro del fragmento.
-Un buen momento es auto-contenido (20-90s), tiene un gancho claro y genera curiosidad, emoción o valor.
-Devuelve tiempos absolutos en segundos dentro del rango dado, un score 0-1, un hook corto y la razón.`;
+Recibes un fragmento de la transcripción de un video con su rango de tiempo.
+Identifica de 0 a 3 momentos con potencial viral que sean AUTO-CONTENIDOS: una idea
+completa con un comienzo natural (gancho o planteamiento) y un cierre (remate,
+conclusión o resultado). NO cortes a mitad de una idea ni de una frase.
+Empieza al inicio de una frase y termina al final de una frase. Dura 15-90s.
+Devuelve tiempos absolutos en segundos dentro del rango dado, score 0-1, un hook y la razón.`;
 
 const GLOBAL_SYSTEM = `Eres un editor senior de clips virales.
 Recibes momentos candidatos de un video (con tiempos, score local, hook y razón).
-Selecciona y ORDENA los mejores como clips finales, ajustando límites si conviene.
-Cada clip debe tener un título atractivo (para redes) y una razón breve.
+Selecciona y ORDENA los mejores como clips finales. Cada clip debe contar una idea
+COMPLETA y coherente por sí sola: empieza en un comienzo natural y termina en un cierre,
+sin frases cortadas. Ajusta los límites a frases completas si hace falta.
+Pon a cada clip un título atractivo (para redes) y una razón breve.
 Devuelve como máximo el número pedido, del mejor al peor.`;
 
 const localSchema = z.object({
@@ -113,6 +118,9 @@ export interface DetectorOptions {
   chunkSeconds: number;
   overlapSeconds: number;
   target: number;
+  minSec: number;
+  maxSec: number;
+  pauseSec: number;
 }
 
 /**
@@ -190,9 +198,22 @@ export class HighlightDetector {
     });
     cost += costUsd;
 
+    // Ajusta cada highlight a límites de frase (cortes coherentes, sin frases
+    // partidas) y a la duración objetivo. Determinístico.
+    const sentences = buildSentences(words, this.opts.pauseSec);
     const items = data.highlights
       .filter((h) => h.end > h.start)
-      .slice(0, this.opts.target);
+      .slice(0, this.opts.target)
+      .map((h) => {
+        const snapped = snapRange(
+          h.start,
+          h.end,
+          sentences,
+          this.opts.minSec,
+          this.opts.maxSec,
+        );
+        return { ...h, start: snapped.start, end: snapped.end };
+      });
 
     return {
       items,

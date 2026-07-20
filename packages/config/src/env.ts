@@ -54,6 +54,11 @@ export const envSchema = z.object({
   CHUNK_SECONDS: z.coerce.number().int().positive().default(150),
   CHUNK_OVERLAP_SECONDS: z.coerce.number().int().nonnegative().default(20),
   HIGHLIGHTS_TARGET: z.coerce.number().int().positive().default(10),
+  // Cortes coherentes: los highlights se ajustan a frases completas y a esta
+  // duración objetivo (segundos); las frases se separan por puntuación o pausa.
+  HIGHLIGHT_MIN_SEC: z.coerce.number().positive().default(15),
+  HIGHLIGHT_MAX_SEC: z.coerce.number().positive().default(90),
+  SENTENCE_PAUSE_SEC: z.coerce.number().positive().default(0.8),
 
   // --- Proceso: generación de clips (FFmpeg) ---
   CLIP_REFRAME: z.enum(["crop", "blur", "fit"]).default("crop"),
