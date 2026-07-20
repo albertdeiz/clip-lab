@@ -153,8 +153,10 @@ export const highlightSchema = z.object({
   title: z.string(),
   reason: z.string(),
   // Tramos que componen el clip, en orden de reproducción. Ausente/1 = corte
-  // simple; >1 = clip "resumen" cosido de varios momentos (línea de pensamiento).
+  // simple; >1 = clip cosido de varios momentos (línea de pensamiento).
   segments: z.array(segmentSchema).optional(),
+  // Marca el clip resumen del video (recap cosido de los mejores momentos).
+  summary: z.boolean().optional(),
 });
 export type Highlight = z.infer<typeof highlightSchema>;
 

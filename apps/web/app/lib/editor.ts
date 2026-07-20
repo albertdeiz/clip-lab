@@ -13,7 +13,10 @@ export interface EditClip {
   score: number;
   title: string;
   reason: string;
+  summary?: boolean; // clip resumen del video (recap cosido)
 }
+
+export const SUMMARY_TITLE = "Resumen del video";
 
 let counter = 0;
 function localId(): string {
@@ -31,6 +34,7 @@ export function toEditClips(items: Highlight[]): EditClip[] {
     score: h.score,
     title: h.title,
     reason: h.reason,
+    ...(h.summary ? { summary: true } : {}),
   }));
 }
 
@@ -43,6 +47,7 @@ export function toHighlights(clips: EditClip[]): Highlight[] {
     title: c.title,
     reason: c.reason,
     ...(c.segments.length > 1 ? { segments: c.segments } : {}),
+    ...(c.summary ? { summary: true } : {}),
   }));
 }
 
@@ -161,4 +166,69 @@ export function wordInRange(
 /** ¿La palabra cae en ALGÚN tramo del clip? */
 export function wordInClip(word: TranscriptWord, clip: EditClip): boolean {
   return clip.segments.some((s) => wordInRange(word, s));
+}
+
+/**
+ * Ventana líder de un rango: desde el inicio de su primera frase, acumulando
+ * frases completas hasta ~capSec (el "gancho" del momento). Alineada a frases.
+ */
+export function leadWindow(
+  range: { start: number; end: number },
+  sentences: Sentence[],
+  capSec: number,
+): Segment {
+  const within = sentences.filter((s) => s.start < range.end && s.end > range.start);
+  if (within.length === 0) {
+    return { start: range.start, end: Math.min(range.end, range.start + capSec) };
+  }
+  const start = within[0]!.start;
+  let end = within[0]!.end;
+  for (const s of within) {
+    if (s.end - start <= capSec) end = s.end;
+    else break;
+  }
+  return { start, end };
+}
+
+export interface SummaryOptions {
+  targetSec?: number; // duración total objetivo del resumen
+  capSec?: number; // tope por tramo (ventana líder)
+}
+
+/**
+ * Compone un resumen determinístico (sin IA): toma la ventana líder de cada
+ * momento, prioriza por score sumando hasta ~targetSec y las ordena
+ * cronológicamente para que el recap fluya en el tiempo del video.
+ */
+export function buildSummary(
+  clips: EditClip[],
+  sentences: Sentence[],
+  opts: SummaryOptions = {},
+): Segment[] {
+  const targetSec = opts.targetSec ?? 45;
+  const capSec = opts.capSec ?? 12;
+  const ranked = clips
+    .filter((c) => !c.summary)
+    .sort((a, b) => b.score - a.score);
+  const picked: Segment[] = [];
+  let total = 0;
+  for (const c of ranked) {
+    const w = leadWindow({ start: clipStart(c), end: clipEnd(c) }, sentences, capSec);
+    const d = w.end - w.start;
+    if (d <= 0) continue;
+    if (total + d > targetSec && picked.length > 0) continue;
+    picked.push(w);
+    total += d;
+    if (total >= targetSec) break;
+  }
+  // Orden cronológico + fusión de ventanas adyacentes/solapadas (< 0.6s de hueco)
+  // para que el recap no quede partido en tramos contiguos.
+  const ordered = picked.sort((a, b) => a.start - b.start);
+  const merged: Segment[] = [];
+  for (const s of ordered) {
+    const last = merged[merged.length - 1];
+    if (last && s.start - last.end <= 0.6) last.end = Math.max(last.end, s.end);
+    else merged.push({ ...s });
+  }
+  return merged;
 }

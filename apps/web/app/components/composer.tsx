@@ -163,6 +163,7 @@ export function Composer() {
     setTitle,
     deleteClip,
     addClipAtCursor,
+    buildSummaryClip,
     snapAll,
     save,
     generate,
@@ -200,6 +201,14 @@ export function Composer() {
           title="Ajustar todos los cortes a frases completas"
         >
           Cortes limpios
+        </button>
+        <button
+          onClick={buildSummaryClip}
+          disabled={clips.filter((c) => !c.summary).length === 0}
+          className="ml-auto rounded border border-violet-600 px-2 py-1 text-violet-200 hover:bg-violet-600/20 disabled:opacity-40"
+          title="Generar un clip resumen cosiendo los mejores momentos"
+        >
+          ✦ Resumen
         </button>
       </div>
 
@@ -247,9 +256,13 @@ export function Composer() {
                       </button>
                     </div>
                     <div className="mt-1 flex items-center gap-2 pl-4 text-xs text-neutral-500">
-                      {multi ? (
+                      {c.summary ? (
                         <span className={color.text}>
-                          {c.segments.length} tramos · resumen
+                          ✦ Resumen · {c.segments.length} tramos
+                        </span>
+                      ) : multi ? (
+                        <span className={color.text}>
+                          {c.segments.length} tramos
                         </span>
                       ) : (
                         <span className={color.text}>

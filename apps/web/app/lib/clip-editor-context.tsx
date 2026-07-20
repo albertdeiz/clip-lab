@@ -21,9 +21,11 @@ import type {
 } from "@clip-lab/contracts";
 import { useAuth } from "./auth-context";
 import {
+  buildSummary,
   clipStart,
   sentencesOf,
   snap,
+  SUMMARY_TITLE,
   toEditClips,
   toHighlights,
   type EditClip,
@@ -73,6 +75,7 @@ export interface ClipEditorValue {
   removeSegment: (clipId: string, segIdx: number) => void;
   reorderSegments: (clipId: string, from: number, to: number) => void;
   addClipAtCursor: () => void;
+  buildSummaryClip: () => void;
   setTitle: (id: string, title: string) => void;
   deleteClip: (id: string) => void;
   deleteActive: () => void;
@@ -313,6 +316,31 @@ export function ClipEditorProvider({
     createClip({ start, end });
   }, [currentTime, duration, createClip]);
 
+  const buildSummaryClip = useCallback(() => {
+    if (sentences.length === 0) return;
+    const segments = buildSummary(clips, sentences);
+    if (segments.length === 0) return;
+    const existing = clips.find((c) => c.summary);
+    if (existing) {
+      patchClip(existing._id, (c) => ({ ...c, segments }));
+      setActiveId(existing._id);
+      return;
+    }
+    const ec = toEditClips([
+      {
+        start: Math.min(...segments.map((s) => s.start)),
+        end: Math.max(...segments.map((s) => s.end)),
+        score: 1,
+        title: SUMMARY_TITLE,
+        reason: "Recap automático de los mejores momentos",
+        segments,
+        summary: true,
+      },
+    ])[0]!;
+    setClips((prev) => [ec, ...prev]);
+    setActiveId(ec._id);
+  }, [clips, sentences, patchClip]);
+
   const setTitle = useCallback(
     (id: string, title: string) => patchClip(id, (c) => ({ ...c, title })),
     [patchClip],
@@ -522,6 +550,7 @@ export function ClipEditorProvider({
       removeSegment,
       reorderSegments,
       addClipAtCursor,
+      buildSummaryClip,
       setTitle,
       deleteClip,
       deleteActive,
@@ -563,6 +592,7 @@ export function ClipEditorProvider({
       removeSegment,
       reorderSegments,
       addClipAtCursor,
+      buildSummaryClip,
       setTitle,
       deleteClip,
       deleteActive,
