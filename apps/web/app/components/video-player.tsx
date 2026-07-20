@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { PlaybackUrlResponse } from "@clip-lab/contracts";
-import { useAuth } from "../lib/auth-context";
-import { TranscriptPanel } from "./transcript-panel";
-import { HighlightsPanel } from "./highlights-panel";
-import { ClipsPanel } from "./clips-panel";
+import { useRef, useState } from "react";
+import { ClipEditorProvider, useClipEditor } from "../lib/clip-editor-context";
+import { TranscriptEditor } from "./transcript-editor";
+import { Composer } from "./composer";
 
+/**
+ * Shell del editor: monta el provider y el layout transcript-first con video
+ * PiP flotante. Toda la lógica vive en <ClipEditorProvider> (useClipEditor).
+ */
 export function VideoPlayer({
   videoId,
   title,
@@ -16,51 +18,16 @@ export function VideoPlayer({
   title: string;
   onClose: () => void;
 }) {
-  const { authedFetch } = useAuth();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [activeRange, setActiveRange] = useState<{
-    start: number;
-    end: number;
-  } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const res = await authedFetch<PlaybackUrlResponse>(
-          `/videos/${videoId}/playback-url`,
-        );
-        if (active) setUrl(res.url);
-      } catch {
-        if (active) setError("No se pudo cargar el video");
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [videoId, authedFetch]);
-
-  const seek = (sec: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = sec;
-      void videoRef.current.play().catch(() => undefined);
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={`Reproduciendo ${title}`}
+      aria-label={`Editando ${title}`}
       onClick={onClose}
     >
       <div
-        className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
+        className="relative flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-4 py-3">
@@ -74,69 +41,118 @@ export function VideoPlayer({
           </button>
         </div>
 
-        <div className="overflow-y-auto">
-          <div className="flex flex-col md:flex-row">
-            {/* Izquierda: video + momentos sugeridos justo debajo */}
-            <div className="min-w-0 md:flex-1">
-              <div className="bg-black">
-                {error ? (
-                  <p className="p-10 text-center text-sm text-red-300">{error}</p>
-                ) : url ? (
-                  <>
-                    {/* Sin autoPlay: el play nativo (gesto del usuario) reproduce con audio. */}
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <video
-                      ref={videoRef}
-                      src={url}
-                      controls
-                      preload="metadata"
-                      className="max-h-[55vh] w-full"
-                      onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                      onError={() =>
-                        setPlaybackError(
-                          "Tu navegador no puede reproducir este formato o códec.",
-                        )
-                      }
-                    />
-                    {playbackError && (
-                      <p className="p-3 text-center text-sm text-amber-300">
-                        {playbackError}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="p-10 text-center text-sm text-neutral-500">
-                    Cargando…
-                  </p>
-                )}
-              </div>
-              <div className="border-t border-neutral-800">
-                <HighlightsPanel
-                  videoId={videoId}
-                  currentTime={currentTime}
-                  onSeek={seek}
-                  onHoverRange={setActiveRange}
-                />
-              </div>
-            </div>
-
-            {/* Derecha: transcript como panel lateral (scroll propio) */}
-            <aside className="border-t border-neutral-800 md:max-h-[75vh] md:w-80 md:shrink-0 md:overflow-y-auto md:border-l md:border-t-0">
-              <TranscriptPanel
-                videoId={videoId}
-                currentTime={currentTime}
-                onSeek={seek}
-                activeRange={activeRange}
-              />
-            </aside>
-          </div>
-
-          {/* Clips generados: sección al final, ancho completo */}
-          <div className="border-t border-neutral-800">
-            <ClipsPanel videoId={videoId} />
-          </div>
-        </div>
+        <ClipEditorProvider videoId={videoId}>
+          <EditorBody />
+          <FloatingVideo />
+        </ClipEditorProvider>
       </div>
+    </div>
+  );
+}
+
+function EditorBody() {
+  const { words, transcript, transcribing, detecting } = useClipEditor();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        {transcript?.status === "FAILED" ? (
+          <p className="p-6 text-sm text-red-400">
+            {transcript.failReason ?? "No se pudo transcribir"}
+          </p>
+        ) : transcribing ? (
+          <p className="flex items-center gap-2 p-6 text-sm text-neutral-400">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+            Transcribiendo audio…
+          </p>
+        ) : words.length === 0 ? (
+          <p className="p-6 text-sm text-neutral-500">
+            {transcript?.text || "Sin diálogo detectado."}
+          </p>
+        ) : (
+          <>
+            {detecting && (
+              <p className="flex items-center gap-2 border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
+                Detectando momentos sugeridos…
+              </p>
+            )}
+            <TranscriptEditor />
+          </>
+        )}
+      </main>
+
+      <aside className="flex min-h-0 border-t border-neutral-800 md:w-[360px] md:shrink-0 md:border-l md:border-t-0">
+        <Composer />
+      </aside>
+    </div>
+  );
+}
+
+/**
+ * Video flotante (PiP) arrastrable dentro del modal. Arranca abajo-izquierda;
+ * se mueve tomándolo de su barra superior. El elemento <video> se enlaza al
+ * videoRef del editor para compartir seek/tiempo con transcript y composer.
+ */
+function FloatingVideo() {
+  const { videoRef, url, loadError, setCurrentTime, setDuration } = useClipEditor();
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const dragging = useRef<{ dx: number; dy: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  function onPointerDown(e: React.PointerEvent) {
+    const rect = boxRef.current!.getBoundingClientRect();
+    dragging.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    boxRef.current!.setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragging.current) return;
+    setPos({ x: e.clientX - dragging.current.dx, y: e.clientY - dragging.current.dy });
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    dragging.current = null;
+    boxRef.current!.releasePointerCapture(e.pointerId);
+  }
+
+  return (
+    <div
+      ref={boxRef}
+      className="fixed z-10 w-56 overflow-hidden rounded-lg border border-neutral-700 bg-black shadow-2xl md:w-64"
+      style={pos ? { left: pos.x, top: pos.y } : { left: 24, bottom: 24, position: "absolute" }}
+    >
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className="flex cursor-move items-center gap-1 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500"
+      >
+        <span>⋮⋮</span>
+        <span>preview</span>
+      </div>
+      {loadError ? (
+        <p className="p-4 text-center text-xs text-red-300">{loadError}</p>
+      ) : url ? (
+        <>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video
+            ref={videoRef}
+            src={url}
+            controls
+            preload="metadata"
+            className="w-full rounded-b-lg"
+            onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+            onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+            onError={() => setPlaybackError("Formato/códec no reproducible en el navegador.")}
+          />
+          {playbackError && (
+            <p className="px-2 py-1 text-center text-[11px] text-amber-300">
+              {playbackError}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="p-4 text-center text-xs text-neutral-500">Cargando…</p>
+      )}
     </div>
   );
 }

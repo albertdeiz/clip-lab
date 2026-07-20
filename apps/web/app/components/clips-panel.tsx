@@ -76,7 +76,20 @@ function ClipCard({ videoId, clip }: { videoId: string; clip: Clip }) {
   );
 }
 
-export function ClipsPanel({ videoId }: { videoId: string }) {
+export function ClipsPanel({
+  videoId,
+  compact = false,
+  showGenerate = true,
+  reloadKey = 0,
+}: {
+  videoId: string;
+  /** Columna angosta (1 col) para el composer lateral. */
+  compact?: boolean;
+  /** Muestra el botón de generar propio (off cuando el composer lo controla). */
+  showGenerate?: boolean;
+  /** Cambia este valor para forzar un refetch (p. ej. tras generar). */
+  reloadKey?: number;
+}) {
   const { authedFetch } = useAuth();
   const [clips, setClips] = useState<Clip[] | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -107,7 +120,7 @@ export function ClipsPanel({ videoId }: { videoId: string }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [load]);
+  }, [load, reloadKey]);
 
   async function generate() {
     setGenerating(true);
@@ -125,24 +138,32 @@ export function ClipsPanel({ videoId }: { videoId: string }) {
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs uppercase tracking-widest text-neutral-500">
-          Clips 9:16
+          Clips generados
         </span>
-        <button
-          onClick={() => void generate()}
-          disabled={generating}
-          className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
-        >
-          {generating ? "Generando…" : clips && clips.length ? "Regenerar" : "Generar clips"}
-        </button>
+        {showGenerate && (
+          <button
+            onClick={() => void generate()}
+            disabled={generating}
+            className="rounded-lg border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {generating ? "Generando…" : clips && clips.length ? "Regenerar" : "Generar clips"}
+          </button>
+        )}
       </div>
       {!clips ? (
         <p className="text-sm text-neutral-500">Cargando clips…</p>
       ) : clips.length === 0 ? (
         <p className="text-sm text-neutral-500">
-          Aún no hay clips. Genera clips desde los highlights detectados.
+          Aún no hay clips. Ármalos desde el transcript y pulsa «Generar».
         </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <ul
+          className={
+            compact
+              ? "grid grid-cols-1 gap-3"
+              : "grid grid-cols-2 gap-3 sm:grid-cols-3"
+          }
+        >
           {clips.map((c) => (
             <ClipCard key={c.id} videoId={videoId} clip={c} />
           ))}
