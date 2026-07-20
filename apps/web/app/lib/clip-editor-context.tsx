@@ -14,12 +14,14 @@ import {
 import type {
   HighlightsResponse,
   PlaybackUrlResponse,
+  Segment,
   Sentence,
   TranscriptResponse,
   TranscriptWord,
 } from "@clip-lab/contracts";
 import { useAuth } from "./auth-context";
 import {
+  clipStart,
   sentencesOf,
   snap,
   toEditClips,
@@ -64,9 +66,12 @@ export interface ClipEditorValue {
   generating: boolean;
   generatedKey: number;
   setActive: (id: string) => void;
-  createClip: (range: { start: number; end: number }) => void;
-  replaceActive: (range: { start: number; end: number }) => void;
-  trim: (edge: "start" | "end", sec: number) => void;
+  createClip: (range: Segment) => void;
+  replaceActive: (range: Segment) => void;
+  addSegmentToActive: (range: Segment) => void;
+  trimSegment: (segIdx: number, edge: "start" | "end", sec: number) => void;
+  removeSegment: (clipId: string, segIdx: number) => void;
+  reorderSegments: (clipId: string, from: number, to: number) => void;
   addClipAtCursor: () => void;
   setTitle: (id: string, title: string) => void;
   deleteClip: (id: string) => void;
@@ -77,9 +82,10 @@ export interface ClipEditorValue {
   // selección (compartida entre transcript, barra de acciones y atajos)
   selection: WordSelection | null;
   setSelection: (s: WordSelection | null) => void;
-  selectionRange: () => { start: number; end: number } | null;
+  selectionRange: () => Segment | null;
   createFromSelection: () => void;
   fixSelectionToActive: () => void;
+  addSegmentFromSelection: () => void;
   // decorators
   decorators: WordDecorator[];
 }
@@ -95,7 +101,8 @@ export function useClipEditor(): ClipEditorValue {
 /**
  * Provider central del editor de clips (patrón useEditor + Context): concentra
  * el estado y las operaciones para que transcript, composer, PiP y atajos
- * compartan una sola fuente de verdad, sin prop-drilling.
+ * compartan una sola fuente de verdad, sin prop-drilling. Los clips son listas
+ * ordenadas de tramos → soporta cortes simples y clips resumen multi-segmento.
  */
 export function ClipEditorProvider({
   videoId,
@@ -185,7 +192,7 @@ export function ClipEditorProvider({
           initialized.current = true;
           const ec = toEditClips(h.items);
           setClips(ec);
-          setBaseline(JSON.stringify(h.items));
+          setBaseline(JSON.stringify(toHighlights(ec)));
           if (ec[0]) setActiveId(ec[0]._id);
         }
         if (h.status === "QUEUED" || h.status === "DETECTING") {
@@ -217,26 +224,29 @@ export function ClipEditorProvider({
     else v.pause();
   }, []);
 
-  // --- clips ---
-  const patch = useCallback(
-    (id: string, p: Partial<EditClip>) =>
-      setClips((prev) => prev.map((c) => (c._id === id ? { ...c, ...p } : c))),
+  // --- clips / segmentos ---
+  const patchClip = useCallback(
+    (id: string, fn: (c: EditClip) => EditClip) =>
+      setClips((prev) => prev.map((c) => (c._id === id ? fn(c) : c))),
     [],
   );
 
-  const setActive = useCallback(
-    (id: string) => {
-      setActiveId(id);
-      setClips((prev) => {
-        const c = prev.find((x) => x._id === id);
-        if (c) seek(c.start);
-        return prev;
-      });
-    },
-    [seek],
-  );
+  const setActive = useCallback((id: string) => {
+    setActiveId(id);
+    setClips((prev) => {
+      const c = prev.find((x) => x._id === id);
+      if (c) {
+        const v = videoRef.current;
+        if (v) {
+          v.currentTime = Math.max(0, clipStart(c));
+          void v.play().catch(() => undefined);
+        }
+      }
+      return prev;
+    });
+  }, []);
 
-  const createClip = useCallback((range: { start: number; end: number }) => {
+  const createClip = useCallback((range: Segment) => {
     const ec = toEditClips([
       { ...range, score: 0.5, title: "Nuevo clip", reason: "" },
     ])[0]!;
@@ -245,25 +255,56 @@ export function ClipEditorProvider({
   }, []);
 
   const replaceActive = useCallback(
-    (range: { start: number; end: number }) => {
-      if (activeId) patch(activeId, range);
+    (range: Segment) => {
+      if (activeId) patchClip(activeId, (c) => ({ ...c, segments: [range] }));
     },
-    [activeId, patch],
+    [activeId, patchClip],
   );
 
-  const trim = useCallback(
-    (edge: "start" | "end", sec: number) => {
-      if (!activeId) return;
-      setClips((prev) =>
-        prev.map((c) => {
-          if (c._id !== activeId) return c;
-          return edge === "start"
-            ? { ...c, start: Math.max(0, Math.min(sec, c.end - MIN_CLIP_SEC)) }
-            : { ...c, end: Math.max(sec, c.start + MIN_CLIP_SEC) };
-        }),
-      );
+  const addSegmentToActive = useCallback(
+    (range: Segment) => {
+      if (activeId)
+        patchClip(activeId, (c) => ({ ...c, segments: [...c.segments, range] }));
     },
-    [activeId],
+    [activeId, patchClip],
+  );
+
+  const trimSegment = useCallback(
+    (segIdx: number, edge: "start" | "end", sec: number) => {
+      if (!activeId) return;
+      patchClip(activeId, (c) => {
+        const segments = c.segments.map((s, i) => {
+          if (i !== segIdx) return s;
+          return edge === "start"
+            ? { ...s, start: Math.max(0, Math.min(sec, s.end - MIN_CLIP_SEC)) }
+            : { ...s, end: Math.max(sec, s.start + MIN_CLIP_SEC) };
+        });
+        return { ...c, segments };
+      });
+    },
+    [activeId, patchClip],
+  );
+
+  const removeSegment = useCallback((clipId: string, segIdx: number) => {
+    setClips((prev) =>
+      prev.flatMap((c) => {
+        if (c._id !== clipId) return [c];
+        const segments = c.segments.filter((_, i) => i !== segIdx);
+        return segments.length === 0 ? [] : [{ ...c, segments }];
+      }),
+    );
+  }, []);
+
+  const reorderSegments = useCallback(
+    (clipId: string, from: number, to: number) => {
+      patchClip(clipId, (c) => {
+        const segments = [...c.segments];
+        const [moved] = segments.splice(from, 1);
+        if (moved) segments.splice(to, 0, moved);
+        return { ...c, segments };
+      });
+    },
+    [patchClip],
   );
 
   const addClipAtCursor = useCallback(() => {
@@ -272,7 +313,10 @@ export function ClipEditorProvider({
     createClip({ start, end });
   }, [currentTime, duration, createClip]);
 
-  const setTitle = useCallback((id: string, title: string) => patch(id, { title }), [patch]);
+  const setTitle = useCallback(
+    (id: string, title: string) => patchClip(id, (c) => ({ ...c, title })),
+    [patchClip],
+  );
 
   const deleteClip = useCallback((id: string) => {
     setClips((prev) => prev.filter((c) => c._id !== id));
@@ -286,10 +330,10 @@ export function ClipEditorProvider({
   const snapAll = useCallback(() => {
     if (sentences.length === 0) return;
     setClips((prev) =>
-      prev.map((c) => {
-        const s = snap(c.start, c.end, sentences);
-        return { ...c, start: s.start, end: s.end };
-      }),
+      prev.map((c) => ({
+        ...c,
+        segments: c.segments.map((s) => snap(s.start, s.end, sentences)),
+      })),
     );
   }, [sentences]);
 
@@ -300,7 +344,7 @@ export function ClipEditorProvider({
         `/videos/${videoId}/highlights`,
         { method: "PATCH", body: { items: toHighlights(clips) } },
       );
-      setBaseline(JSON.stringify(res.items));
+      setBaseline(JSON.stringify(toHighlights(toEditClips(res.items))));
       return true;
     } catch {
       return false;
@@ -323,7 +367,7 @@ export function ClipEditorProvider({
   }, [dirty, save, authedFetch, videoId]);
 
   // --- selección ---
-  const selectionRange = useCallback((): { start: number; end: number } | null => {
+  const selectionRange = useCallback((): Segment | null => {
     if (!selection || words.length === 0) return null;
     const a = Math.min(selection.a, selection.b);
     const b = Math.max(selection.a, selection.b);
@@ -342,7 +386,27 @@ export function ClipEditorProvider({
     setSelection(null);
   }, [selectionRange, activeId, replaceActive]);
 
+  const addSegmentFromSelection = useCallback(() => {
+    const r = selectionRange();
+    if (r && activeId) addSegmentToActive(r);
+    setSelection(null);
+  }, [selectionRange, activeId, addSegmentToActive]);
+
   // --- atajos de teclado (capa de comandos) ---
+  const trimAtCursor = useCallback(
+    (edge: "start" | "end") => {
+      if (!activeId) return;
+      const c = clips.find((x) => x._id === activeId);
+      if (!c) return;
+      let idx = c.segments.findIndex(
+        (s) => currentTime >= s.start && currentTime <= s.end,
+      );
+      if (idx < 0) idx = edge === "start" ? 0 : c.segments.length - 1;
+      trimSegment(idx, edge, currentTime);
+    },
+    [activeId, clips, currentTime, trimSegment],
+  );
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const el = e.target as HTMLElement | null;
@@ -381,11 +445,15 @@ export function ClipEditorProvider({
         case "F":
           fixSelectionToActive();
           break;
+        case "a":
+        case "A":
+          addSegmentFromSelection();
+          break;
         case "[":
-          if (activeId) trim("start", currentTime);
+          trimAtCursor("start");
           break;
         case "]":
-          if (activeId) trim("end", currentTime);
+          trimAtCursor("end");
           break;
         case "Backspace":
         case "Delete":
@@ -408,8 +476,9 @@ export function ClipEditorProvider({
     currentTime,
     createFromSelection,
     fixSelectionToActive,
+    addSegmentFromSelection,
+    trimAtCursor,
     activeId,
-    trim,
     deleteActive,
     selection,
   ]);
@@ -448,7 +517,10 @@ export function ClipEditorProvider({
       setActive,
       createClip,
       replaceActive,
-      trim,
+      addSegmentToActive,
+      trimSegment,
+      removeSegment,
+      reorderSegments,
       addClipAtCursor,
       setTitle,
       deleteClip,
@@ -461,6 +533,7 @@ export function ClipEditorProvider({
       selectionRange,
       createFromSelection,
       fixSelectionToActive,
+      addSegmentFromSelection,
       decorators: DEFAULT_DECORATORS,
     }),
     [
@@ -485,7 +558,10 @@ export function ClipEditorProvider({
       setActive,
       createClip,
       replaceActive,
-      trim,
+      addSegmentToActive,
+      trimSegment,
+      removeSegment,
+      reorderSegments,
       addClipAtCursor,
       setTitle,
       deleteClip,
@@ -497,6 +573,7 @@ export function ClipEditorProvider({
       selectionRange,
       createFromSelection,
       fixSelectionToActive,
+      addSegmentFromSelection,
     ],
   );
 

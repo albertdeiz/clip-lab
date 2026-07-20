@@ -1,14 +1,154 @@
 "use client";
 
-import { colorOf, dur, fmt } from "../lib/editor";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  clipDur,
+  clipEnd,
+  clipStart,
+  colorOf,
+  fmt,
+  segDur,
+  type ClipColor,
+  type EditClip,
+} from "../lib/editor";
 import { useClipEditor } from "../lib/clip-editor-context";
 import { ClipsPanel } from "./clips-panel";
 
 /**
+ * Fila de tramo (segmento) arrastrable dentro de un clip resumen. El orden de
+ * los tramos define la narrativa del clip final.
+ */
+function SegmentRow({
+  id,
+  index,
+  seg,
+  color,
+  onSeek,
+  onRemove,
+  canRemove,
+}: {
+  id: string;
+  index: number;
+  seg: { start: number; end: number };
+  color: ClipColor;
+  onSeek: (sec: number) => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-2 rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs ${
+        isDragging ? "opacity-60" : ""
+      }`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-neutral-600 hover:text-neutral-300"
+        aria-label="Reordenar tramo"
+        onClick={(e) => e.stopPropagation()}
+      >
+        ⋮⋮
+      </button>
+      <span
+        className={`grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold text-neutral-950 ${color.dot}`}
+      >
+        {index + 1}
+      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onSeek(seg.start);
+        }}
+        className={`${color.text} hover:underline`}
+      >
+        {fmt(seg.start)}–{fmt(seg.end)}
+      </button>
+      <span className="text-neutral-500">· {Math.round(segDur(seg))}s</span>
+      {canRemove && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="ml-auto text-neutral-600 hover:text-red-400"
+          aria-label="Quitar tramo"
+        >
+          ✕
+        </button>
+      )}
+    </li>
+  );
+}
+
+function SegmentList({
+  clip,
+  color,
+  onSeek,
+  onReorder,
+  onRemove,
+}: {
+  clip: EditClip;
+  color: ClipColor;
+  onSeek: (sec: number) => void;
+  onReorder: (from: number, to: number) => void;
+  onRemove: (idx: number) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+  const ids = clip.segments.map((_, i) => `${clip._id}:${i}`);
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    onReorder(ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <ul className="mt-2 space-y-1 pl-4">
+          {clip.segments.map((seg, i) => (
+            <SegmentRow
+              key={ids[i]}
+              id={ids[i]!}
+              index={i}
+              seg={seg}
+              color={color}
+              onSeek={onSeek}
+              onRemove={() => onRemove(i)}
+              canRemove={clip.segments.length > 1}
+            />
+          ))}
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/**
  * Composer: la lista de clips que se están armando. Cada fila es seleccionable
- * (marca el clip "activo", resaltado en el transcript y objetivo de las
- * ediciones). Debajo, los clips 9:16 ya renderizados. Toda su data sale del
- * context del editor (sin props).
+ * (marca el clip "activo", resaltado en el transcript). El clip activo se
+ * expande a sus tramos ordenados (reordenables por DnD) para los clips resumen.
+ * Toda su data sale del context del editor (sin props).
  */
 export function Composer() {
   const {
@@ -26,6 +166,9 @@ export function Composer() {
     snapAll,
     save,
     generate,
+    seek,
+    reorderSegments,
+    removeSegment,
   } = useClipEditor();
 
   return (
@@ -64,14 +207,16 @@ export function Composer() {
         <div>
           {clips.length === 0 ? (
             <p className="p-4 text-sm text-neutral-500">
-              Selecciona texto en el transcript y pulsa «Nuevo clip» (o tecla C), o
-              usa «+ Clip aquí».
+              Selecciona texto en el transcript y pulsa «Nuevo clip» (o tecla C).
+              Para un clip resumen, activa un clip y añade más tramos con «+ Añadir
+              a activo» (A).
             </p>
           ) : (
             <ul className="space-y-2 p-3">
               {clips.map((c, i) => {
                 const color = colorOf(i);
                 const active = c._id === activeId;
+                const multi = c.segments.length > 1;
                 return (
                   <li
                     key={c._id}
@@ -102,12 +247,28 @@ export function Composer() {
                       </button>
                     </div>
                     <div className="mt-1 flex items-center gap-2 pl-4 text-xs text-neutral-500">
-                      <span className={color.text}>
-                        {fmt(c.start)}–{fmt(c.end)}
-                      </span>
-                      <span>· {Math.round(dur(c))}s</span>
+                      {multi ? (
+                        <span className={color.text}>
+                          {c.segments.length} tramos · resumen
+                        </span>
+                      ) : (
+                        <span className={color.text}>
+                          {fmt(clipStart(c))}–{fmt(clipEnd(c))}
+                        </span>
+                      )}
+                      <span>· {Math.round(clipDur(c))}s</span>
                       <span className="ml-auto">{Math.round(c.score * 100)}</span>
                     </div>
+
+                    {active && (
+                      <SegmentList
+                        clip={c}
+                        color={color}
+                        onSeek={seek}
+                        onReorder={(from, to) => reorderSegments(c._id, from, to)}
+                        onRemove={(idx) => removeSegment(c._id, idx)}
+                      />
+                    )}
                   </li>
                 );
               })}

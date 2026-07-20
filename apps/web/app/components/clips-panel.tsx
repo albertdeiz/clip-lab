@@ -39,7 +39,9 @@ function ClipCard({ videoId, clip }: { videoId: string; clip: Clip }) {
       <div className="flex items-start justify-between gap-2">
         <span className="line-clamp-2 text-sm font-medium">{clip.title}</span>
         <span className="shrink-0 rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
-          {fmt(clip.startSec)}
+          {clip.segments && clip.segments.length > 1
+            ? `${clip.segments.length} tramos`
+            : fmt(clip.startSec)}
         </span>
       </div>
 

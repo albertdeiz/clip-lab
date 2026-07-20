@@ -15,9 +15,14 @@ import { loadEnv } from "@clip-lab/config";
 import type { PublishFn } from "../transcriber.js";
 import { NonRetryableError } from "../errors.js";
 import { downloadToFile, uploadFile, deleteObject } from "../storage.js";
-import { reframeFilter } from "./reframe.js";
+import { reframeFilter, reframeGraph } from "./reframe.js";
 
 const env = loadEnv();
+
+interface Segment {
+  start: number;
+  end: number;
+}
 
 interface HighlightItem {
   start: number;
@@ -25,6 +30,71 @@ interface HighlightItem {
   score: number;
   title: string;
   reason: string;
+  segments?: Segment[];
+}
+
+/** Tramos efectivos de un highlight: los suyos si existen, o [start,end]. */
+function segmentsOf(h: HighlightItem): Segment[] {
+  const segs = (h.segments ?? []).filter((s) => s.end > s.start);
+  return segs.length > 0 ? segs : [{ start: h.start, end: h.end }];
+}
+
+const CODEC_ARGS = [
+  "-r", "30",
+  "-c:v", "libx264",
+  "-preset", "veryfast",
+  "-pix_fmt", "yuv420p",
+  "-c:a", "aac",
+  "-movflags", "+faststart",
+];
+
+/**
+ * Construye los argumentos de FFmpeg para producir un clip 9:16:
+ *  - 1 tramo → corte directo con `-ss/-t` + `-vf` (rápido, seek en la fuente).
+ *  - N tramos → `filter_complex`: recorta cada tramo, los concatena en orden y
+ *    aplica el reencuadre al resultado (clip "resumen" cosido en una pasada).
+ */
+function buildCutArgs(
+  source: string,
+  segments: Segment[],
+  vfFilter: string,
+  out: string,
+): string[] {
+  if (segments.length === 1) {
+    const s = segments[0]!;
+    return [
+      "-y",
+      "-ss", String(s.start),
+      "-i", source,
+      "-t", String(Math.max(0.5, s.end - s.start)),
+      "-vf", vfFilter,
+      ...CODEC_ARGS,
+      out,
+    ];
+  }
+  const parts: string[] = [];
+  segments.forEach((s, i) => {
+    parts.push(
+      `[0:v]trim=start=${s.start}:end=${s.end},setpts=PTS-STARTPTS[v${i}]`,
+    );
+    parts.push(
+      `[0:a]atrim=start=${s.start}:end=${s.end},asetpts=PTS-STARTPTS[a${i}]`,
+    );
+  });
+  const concatIn = segments.map((_, i) => `[v${i}][a${i}]`).join("");
+  parts.push(`${concatIn}concat=n=${segments.length}:v=1:a=1[vcat][acat]`);
+  parts.push(
+    reframeGraph(env.CLIP_REFRAME, env.CLIP_WIDTH, env.CLIP_HEIGHT, "vcat", "vout"),
+  );
+  return [
+    "-y",
+    "-i", source,
+    "-filter_complex", parts.join(";"),
+    "-map", "[vout]",
+    "-map", "[acat]",
+    ...CODEC_ARGS,
+    out,
+  ];
 }
 
 function ffmpeg(args: string[], timeoutMs: number): Promise<void> {
@@ -82,7 +152,7 @@ export async function generateClips(
   const source = path.join(dir, "source");
   try {
     await downloadToFile(video.storageKey, source);
-    const filter = reframeFilter(
+    const vfFilter = reframeFilter(
       env.CLIP_REFRAME,
       env.CLIP_WIDTH,
       env.CLIP_HEIGHT,
@@ -90,10 +160,13 @@ export async function generateClips(
 
     for (let i = 0; i < items.length; i++) {
       const h = items[i]!;
+      const segments = segmentsOf(h);
       const clipId = randomUUID();
       const key = `users/${userId}/clips/${clipId}.mp4`;
       const out = path.join(dir, `${clipId}.mp4`);
-      const duration = Math.max(0.5, h.end - h.start);
+      const duration = segments.reduce((a, s) => a + (s.end - s.start), 0);
+      const startSec = Math.min(...segments.map((s) => s.start));
+      const endSec = Math.max(...segments.map((s) => s.end));
 
       const clip = await prisma.clip.create({
         data: {
@@ -101,31 +174,16 @@ export async function generateClips(
           videoId,
           index: i,
           title: h.title,
-          startSec: h.start,
-          endSec: h.end,
+          startSec,
+          endSec,
+          segments: segments as unknown as object,
           aspectRatio: "9:16",
           status: "RENDERING",
         },
       });
 
       try {
-        await ffmpeg(
-          [
-            "-y",
-            "-ss", String(h.start),
-            "-i", source,
-            "-t", String(duration),
-            "-vf", filter,
-            "-r", "30",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-movflags", "+faststart",
-            out,
-          ],
-          300_000,
-        );
+        await ffmpeg(buildCutArgs(source, segments, vfFilter, out), 300_000);
         await uploadFile(key, out, "video/mp4");
         const { size } = await stat(out);
         await prisma.clip.update({

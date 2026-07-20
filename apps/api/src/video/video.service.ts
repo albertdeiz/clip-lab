@@ -15,6 +15,7 @@ import type {
   UpdateHighlightsInput,
   ClipListResponse,
   SnapWord,
+  Segment,
 } from "@clip-lab/contracts";
 import { EventType, buildSentences, snapRange } from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -158,8 +159,22 @@ export class VideoService {
     const seen = new Set<string>();
     const items = (set.items as Highlight[])
       .map((h) => {
-        const s = snapRange(h.start, h.end, sentences);
-        return { ...h, start: s.start, end: s.end };
+        const raw =
+          h.segments && h.segments.length > 0
+            ? h.segments
+            : [{ start: h.start, end: h.end }];
+        const segs = raw
+          .map((s) => snapRange(s.start, s.end, sentences))
+          .filter((s) => s.end > s.start);
+        if (segs.length === 0) return { ...h };
+        const start = Math.min(...segs.map((s) => s.start));
+        const end = Math.max(...segs.map((s) => s.end));
+        return {
+          ...h,
+          start,
+          end,
+          segments: segs.length > 1 ? segs : undefined,
+        };
       })
       .filter((h) => {
         const key = `${Math.round(h.start)}-${Math.round(h.end)}`;
@@ -192,6 +207,13 @@ export class VideoService {
   ): Promise<HighlightsResponse> {
     await this.loadOwned(userId, id);
     const items = input.items
+      .map((h) => {
+        const segs = (h.segments ?? []).filter((s) => s.end > s.start);
+        if (segs.length === 0) return { ...h, segments: undefined };
+        const start = Math.min(...segs.map((s) => s.start));
+        const end = Math.max(...segs.map((s) => s.end));
+        return { ...h, start, end, segments: segs.length > 1 ? segs : undefined };
+      })
       .filter((h) => h.end > h.start)
       .sort((a, b) => b.score - a.score);
     const set = await this.prisma.highlightSet.upsert({
@@ -316,6 +338,7 @@ export class VideoService {
         durationSec: c.durationSec,
         sizeBytes: c.sizeBytes === null ? null : Number(c.sizeBytes),
         failReason: c.failReason,
+        segments: Array.isArray(c.segments) ? (c.segments as Segment[]) : null,
       })),
     };
   }

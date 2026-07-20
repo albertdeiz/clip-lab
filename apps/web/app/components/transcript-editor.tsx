@@ -7,18 +7,23 @@ import { useClipEditor } from "../lib/clip-editor-context";
 
 type Drag =
   | { kind: "select" }
-  | { kind: "trim"; edge: "start" | "end" }
+  | { kind: "trim"; edge: "start" | "end"; segIdx: number }
   | null;
+
+interface Mark {
+  segIdx: number;
+  kind: "start" | "end";
+  order: number;
+}
 
 /**
  * Transcript interactivo: el texto ES el timeline y la superficie de edición.
  *  - click en palabra → saltar (seek)
- *  - arrastrar sobre palabras → seleccionar un rango (→ crear/fijar clip)
- *  - arrastrar las manijas del clip activo → recortar inicio/fin palabra a palabra
- * Las capas visuales (clips, cabezal, …) las aporta el registro de decorators.
+ *  - arrastrar sobre palabras → seleccionar rango (→ crear/fijar/añadir a clip)
+ *  - arrastrar las manijas de cada tramo del clip activo → recortar ese tramo
+ * Un clip multi-tramo muestra un número de orden por tramo (clip resumen).
  */
 export function TranscriptEditor() {
-  const editor = useClipEditor();
   const {
     words,
     clips,
@@ -29,29 +34,46 @@ export function TranscriptEditor() {
     selection,
     setSelection,
     seek,
-    trim,
+    trimSegment,
     createFromSelection,
     fixSelectionToActive,
-  } = editor;
+    addSegmentFromSelection,
+  } = useClipEditor();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag>(null);
   const moved = useRef(false);
 
   const activeIdx = clips.findIndex((c) => c._id === activeId);
-  // Primer/última palabra del clip activo, para colocar las manijas de recorte.
-  const { activeStart, activeEnd } = useMemo(() => {
-    if (activeIdx < 0) return { activeStart: -1, activeEnd: -1 };
-    let s = -1;
-    let e = -1;
-    words.forEach((w, i) => {
-      if (wordInRange(w, clips[activeIdx]!)) {
-        if (s < 0) s = i;
-        e = i;
-      }
+  const activeClip = activeIdx >= 0 ? clips[activeIdx]! : null;
+
+  // Marcas de manija por palabra: primer/última palabra de cada tramo del activo.
+  const marks = useMemo(() => {
+    const map = new Map<number, Mark[]>();
+    if (!activeClip) return map;
+    activeClip.segments.forEach((s, segIdx) => {
+      let first = -1;
+      let last = -1;
+      words.forEach((w, i) => {
+        if (wordInRange(w, s)) {
+          if (first < 0) first = i;
+          last = i;
+        }
+      });
+      if (first < 0) return;
+      const add = (idx: number, kind: "start" | "end") => {
+        const arr = map.get(idx) ?? [];
+        arr.push({ segIdx, kind, order: segIdx + 1 });
+        map.set(idx, arr);
+      };
+      add(first, "start");
+      add(last, "end");
     });
-    return { activeStart: s, activeEnd: e };
-  }, [words, clips, activeIdx]);
+    return map;
+  }, [activeClip, words]);
+
+  const multi = (activeClip?.segments.length ?? 0) > 1;
+  const gripColor = activeIdx >= 0 ? colorOf(activeIdx).grip : "";
 
   function idxAtPoint(x: number, y: number): number | null {
     const el = document
@@ -64,8 +86,12 @@ export function TranscriptEditor() {
   function onPointerDown(e: React.PointerEvent) {
     const target = e.target as HTMLElement;
     const handle = target.closest("[data-handle]") as HTMLElement | null;
-    if (handle && activeIdx >= 0) {
-      drag.current = { kind: "trim", edge: handle.dataset.handle as "start" | "end" };
+    if (handle && activeClip) {
+      drag.current = {
+        kind: "trim",
+        edge: handle.dataset.handle as "start" | "end",
+        segIdx: Number(handle.dataset.seg),
+      };
       containerRef.current?.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -88,7 +114,11 @@ export function TranscriptEditor() {
       if (selection && idx !== selection.a) moved.current = true;
     } else {
       const w = words[idx]!;
-      trim(drag.current.edge, drag.current.edge === "start" ? w.start : w.end);
+      trimSegment(
+        drag.current.segIdx,
+        drag.current.edge,
+        drag.current.edge === "start" ? w.start : w.end,
+      );
     }
   }
 
@@ -101,7 +131,6 @@ export function TranscriptEditor() {
         seek(words[selection.a]!.start);
         setSelection(null);
       }
-      // si hubo arrastre real, se mantiene la selección → barra de acciones
     }
   }
 
@@ -124,39 +153,52 @@ export function TranscriptEditor() {
         </span>
         <span>
           Arrastra para seleccionar · click para saltar · manijas del clip activo
-          para recortar
+          para recortar cada tramo
         </span>
       </div>
       <p className="flex flex-wrap items-center gap-x-1 gap-y-1">
         {words.map((word, i) => {
-          const isActiveClip = activeIdx >= 0 && wordInRange(word, clips[activeIdx]!);
           const selected = !!sel && i >= sel.a && i <= sel.b;
           const cls = [
             "cursor-text",
             decorateWord(word, i, { clips, activeId, currentTime }, decorators),
             selected ? "ring-2 ring-white/70" : "",
           ].join(" ");
-          const gripColor = activeIdx >= 0 ? colorOf(activeIdx).grip : "";
+          const wordMarks = marks.get(i);
+          const starts = wordMarks?.filter((m) => m.kind === "start") ?? [];
+          const ends = wordMarks?.filter((m) => m.kind === "end") ?? [];
 
           return (
             <span key={i} className="inline-flex items-center">
-              {isActiveClip && i === activeStart && (
-                <span
-                  data-handle="start"
-                  title="Recortar inicio"
-                  className={`mr-0.5 h-5 w-1.5 cursor-ew-resize rounded-full ${gripColor}`}
-                />
-              )}
+              {starts.map((m) => (
+                <span key={`s${m.segIdx}`} className="mr-0.5 inline-flex items-center">
+                  {multi && (
+                    <span
+                      className={`mr-0.5 grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold text-neutral-950 ${gripColor}`}
+                    >
+                      {m.order}
+                    </span>
+                  )}
+                  <span
+                    data-handle="start"
+                    data-seg={m.segIdx}
+                    title="Recortar inicio del tramo"
+                    className={`h-5 w-1.5 cursor-ew-resize rounded-full ${gripColor}`}
+                  />
+                </span>
+              ))}
               <button data-idx={i} onClick={(e) => e.preventDefault()} className={cls}>
                 {word.w.trim()}
               </button>
-              {isActiveClip && i === activeEnd && (
+              {ends.map((m) => (
                 <span
+                  key={`e${m.segIdx}`}
                   data-handle="end"
-                  title="Recortar fin"
+                  data-seg={m.segIdx}
+                  title="Recortar fin del tramo"
                   className={`ml-0.5 h-5 w-1.5 cursor-ew-resize rounded-full ${gripColor}`}
                 />
-              )}
+              ))}
             </span>
           );
         })}
@@ -176,12 +218,22 @@ export function TranscriptEditor() {
               + Nuevo clip <span className="text-neutral-500">C</span>
             </button>
             {activeId && (
-              <button
-                onClick={fixSelectionToActive}
-                className="rounded-full border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:bg-neutral-800"
-              >
-                Fijar en activo <span className="text-neutral-600">F</span>
-              </button>
+              <>
+                <button
+                  onClick={addSegmentFromSelection}
+                  className="rounded-full border border-violet-600 px-2.5 py-1 text-violet-200 hover:bg-violet-600/20"
+                  title="Añadir como tramo al clip activo (clip resumen)"
+                >
+                  + Añadir a activo <span className="text-violet-400">A</span>
+                </button>
+                <button
+                  onClick={fixSelectionToActive}
+                  className="rounded-full border border-neutral-700 px-2.5 py-1 text-neutral-200 hover:bg-neutral-800"
+                  title="Reemplazar el clip activo por este único rango"
+                >
+                  Fijar <span className="text-neutral-600">F</span>
+                </button>
+              </>
             )}
             <button
               onClick={() => setSelection(null)}

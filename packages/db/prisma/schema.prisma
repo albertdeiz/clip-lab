@@ -106,8 +106,9 @@ model Clip {
   videoId     String     @db.Uuid
   index       Int // orden (coincide con el ranking del highlight)
   title       String
-  startSec    Float
-  endSec      Float
+  startSec    Float // envolvente: inicio del primer tramo
+  endSec      Float // envolvente: fin del último tramo
+  segments    Json? // tramos [{start,end}] renderizados (multi-segmento)
   aspectRatio String     @default("9:16")
   status      ClipStatus @default(QUEUED)
   storageKey  String? // objeto S3 del clip renderizado

@@ -1,15 +1,15 @@
-import type { Highlight, TranscriptWord } from "@clip-lab/contracts";
+import type { Highlight, Segment, TranscriptWord } from "@clip-lab/contracts";
 import { buildSentences, snapRange, type Sentence } from "@clip-lab/contracts";
 
 /**
- * Modelo de edición en el cliente: un clip es un highlight con un id local
- * estable (para keys de React y para marcar el clip activo). En el Slice 1 cada
- * clip es un único rango [start,end]; el multi-segmento llega en el Slice 2.
+ * Modelo de edición en el cliente: un clip es una lista ORDENADA de tramos
+ * (segments) del video, más metadatos. 1 tramo = corte simple; N tramos = clip
+ * "resumen" cosido de varios momentos (línea de pensamiento). `start/end` como
+ * campo se derivan de la envolvente (ver clipStart/clipEnd).
  */
 export interface EditClip {
   _id: string;
-  start: number;
-  end: number;
+  segments: Segment[]; // ≥1, en orden de reproducción
   score: number;
   title: string;
   reason: string;
@@ -22,15 +22,41 @@ function localId(): string {
 }
 
 export function toEditClips(items: Highlight[]): EditClip[] {
-  return items.map((h) => ({ _id: localId(), ...h }));
+  return items.map((h) => ({
+    _id: localId(),
+    segments:
+      h.segments && h.segments.length > 0
+        ? h.segments.map((s) => ({ start: s.start, end: s.end }))
+        : [{ start: h.start, end: h.end }],
+    score: h.score,
+    title: h.title,
+    reason: h.reason,
+  }));
 }
 
-/** Quita el id local antes de persistir vía PATCH. */
+/** Serializa a Highlight[] para PATCH: envolvente + segments (solo si N>1). */
 export function toHighlights(clips: EditClip[]): Highlight[] {
-  return clips.map(({ _id, ...h }) => {
-    void _id;
-    return h;
-  });
+  return clips.map((c) => ({
+    start: clipStart(c),
+    end: clipEnd(c),
+    score: c.score,
+    title: c.title,
+    reason: c.reason,
+    ...(c.segments.length > 1 ? { segments: c.segments } : {}),
+  }));
+}
+
+export function clipStart(c: EditClip): number {
+  return Math.min(...c.segments.map((s) => s.start));
+}
+
+export function clipEnd(c: EditClip): number {
+  return Math.max(...c.segments.map((s) => s.end));
+}
+
+/** Duración real del clip = suma de sus tramos. */
+export function clipDur(c: EditClip): number {
+  return c.segments.reduce((a, s) => a + Math.max(0, s.end - s.start), 0);
 }
 
 export function fmt(sec: number): string {
@@ -39,8 +65,8 @@ export function fmt(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function dur(c: { start: number; end: number }): number {
-  return Math.max(0, c.end - c.start);
+export function segDur(s: Segment): number {
+  return Math.max(0, s.end - s.start);
 }
 
 /**
@@ -124,10 +150,15 @@ export function snap(
   return snapRange(start, end, sentences);
 }
 
-/** ¿La palabra cae dentro del rango [start,end)? (solape temporal). */
+/** ¿La palabra solapa el rango [start,end)? */
 export function wordInRange(
   word: TranscriptWord,
   range: { start: number; end: number },
 ): boolean {
   return word.start < range.end && word.end > range.start;
+}
+
+/** ¿La palabra cae en ALGÚN tramo del clip? */
+export function wordInClip(word: TranscriptWord, clip: EditClip): boolean {
+  return clip.segments.some((s) => wordInRange(word, s));
 }

@@ -1,5 +1,5 @@
 import type { TranscriptWord } from "@clip-lab/contracts";
-import { colorOf, wordInRange, type EditClip } from "./editor";
+import { colorOf, wordInClip, type EditClip } from "./editor";
 
 /**
  * Modelo de decorators (inspirado en Draft.js, pero nativo y para texto fijo):
@@ -44,10 +44,10 @@ export const clipSpansDecorator: WordDecorator = {
   kind: "background",
   classesFor(word, _i, { clips, activeId }) {
     const activeIdx = clips.findIndex((c) => c._id === activeId);
-    if (activeIdx >= 0 && wordInRange(word, clips[activeIdx]!)) {
+    if (activeIdx >= 0 && wordInClip(word, clips[activeIdx]!)) {
       return colorOf(activeIdx).spanActive;
     }
-    const idx = clips.findIndex((c) => wordInRange(word, c));
+    const idx = clips.findIndex((c) => wordInClip(word, c));
     return idx >= 0 ? colorOf(idx).span : "";
   },
 };

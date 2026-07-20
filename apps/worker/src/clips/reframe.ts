@@ -23,3 +23,29 @@ export function reframeFilter(
       return `split[a][b];[a]${cover},gblur=sigma=20[bg];[b]${contain}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2`;
   }
 }
+
+/**
+ * Igual que `reframeFilter` pero como fragmento de `filter_complex`: toma un pad
+ * de entrada etiquetado y produce uno de salida. Se usa para encadenar el
+ * reencuadre después de un `concat` (clips multi-segmento).
+ */
+export function reframeGraph(
+  mode: ReframeMode,
+  width: number,
+  height: number,
+  inLabel: string,
+  outLabel: string,
+): string {
+  const cover = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
+  const contain = `scale=${width}:${height}:force_original_aspect_ratio=decrease`;
+  const i = `[${inLabel}]`;
+  const o = `[${outLabel}]`;
+  switch (mode) {
+    case "crop":
+      return `${i}${cover}${o}`;
+    case "fit":
+      return `${i}${contain},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2${o}`;
+    case "blur":
+      return `${i}split[rfa][rfb];[rfa]${cover},gblur=sigma=20[rfbg];[rfb]${contain}[rffg];[rfbg][rffg]overlay=(W-w)/2:(H-h)/2${o}`;
+  }
+}

@@ -138,12 +138,23 @@ export const highlightStatusSchema = z.enum([
 ]);
 export type HighlightStatus = z.infer<typeof highlightStatusSchema>;
 
+/** Un tramo del video (rango temporal) que compone un clip. */
+export const segmentSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+});
+export type Segment = z.infer<typeof segmentSchema>;
+
 export const highlightSchema = z.object({
+  // start/end son la envolvente (min inicio / max fin) para lectores simples.
   start: z.number(),
   end: z.number(),
   score: z.number(), // 0-1
   title: z.string(),
   reason: z.string(),
+  // Tramos que componen el clip, en orden de reproducción. Ausente/1 = corte
+  // simple; >1 = clip "resumen" cosido de varios momentos (línea de pensamiento).
+  segments: z.array(segmentSchema).optional(),
 });
 export type Highlight = z.infer<typeof highlightSchema>;
 
@@ -192,6 +203,8 @@ export const clipSchema = z.object({
   durationSec: z.number().nullable(),
   sizeBytes: z.number().int().nullable(),
   failReason: z.string().nullable(),
+  // Tramos renderizados (≥1). Presente para clips multi-segmento.
+  segments: z.array(segmentSchema).nullable(),
 });
 export type Clip = z.infer<typeof clipSchema>;
 
