@@ -10,21 +10,23 @@ import {
   type Candidate,
 } from "./chunker.js";
 
-const LOCAL_SYSTEM = `Eres un analista de contenido viral para clips cortos verticales.
-Recibes un fragmento de la transcripción de un video con su rango de tiempo.
-Identifica de 0 a 3 momentos con potencial viral que sean AUTO-CONTENIDOS: una idea
-completa con un comienzo natural (gancho o planteamiento) y un cierre (remate,
-conclusión o resultado). NO cortes a mitad de una idea ni de una frase.
-Empieza al inicio de una frase y termina al final de una frase. Dura 15-90s.
-Devuelve tiempos absolutos en segundos dentro del rango dado, score 0-1, un hook y la razón.`;
+const LOCAL_SYSTEM = `You are a viral content analyst for short vertical clips.
+You receive a fragment of a video's transcript with its time range.
+Identify 0 to 3 moments with viral potential that are SELF-CONTAINED: a complete
+idea with a natural opening (hook or setup) and a closing (payoff, conclusion or
+result). Do NOT cut in the middle of an idea or a sentence.
+Start at the beginning of a sentence and end at the end of a sentence. Length 15-90s.
+Return absolute times in seconds within the given range, a score 0-1, a hook and the reason.
+Write the hook and reason in the same language as the transcript.`;
 
-const GLOBAL_SYSTEM = `Eres un editor senior de clips virales.
-Recibes momentos candidatos de un video (con tiempos, score local, hook y razón).
-Selecciona y ORDENA los mejores como clips finales. Cada clip debe contar una idea
-COMPLETA y coherente por sí sola: empieza en un comienzo natural y termina en un cierre,
-sin frases cortadas. Ajusta los límites a frases completas si hace falta.
-Pon a cada clip un título atractivo (para redes) y una razón breve.
-Devuelve como máximo el número pedido, del mejor al peor.`;
+const GLOBAL_SYSTEM = `You are a senior viral-clip editor.
+You receive candidate moments from a video (with times, local score, hook and reason).
+Select and ORDER the best ones as final clips. Each clip must tell a COMPLETE,
+self-standing idea: it starts at a natural opening and ends at a closing, with no
+cut-off sentences. Adjust the boundaries to full sentences if needed.
+Give each clip a catchy title (for social media) and a brief reason.
+Write the title and reason in the same language as the transcript.
+Return at most the requested number, from best to worst.`;
 
 const localSchema = z.object({
   candidates: z.array(
@@ -155,7 +157,7 @@ export class HighlightDetector {
       const { data, costUsd } = await this.localLlm.structured({
         model: this.opts.localModel,
         system: LOCAL_SYSTEM,
-        user: `Rango del fragmento: ${chunk.start.toFixed(1)}s a ${chunk.end.toFixed(1)}s.\n\nTranscripción:\n${chunk.text}`,
+        user: `Fragment range: ${chunk.start.toFixed(1)}s to ${chunk.end.toFixed(1)}s.\n\nTranscript:\n${chunk.text}`,
         schemaName: "candidates",
         jsonSchema: localJsonSchema,
         validate: (d) => localSchema.parse(d),
@@ -190,7 +192,7 @@ export class HighlightDetector {
     const { data, costUsd } = await this.globalLlm.structured({
       model: this.opts.globalModel,
       system: GLOBAL_SYSTEM,
-      user: `Elige los mejores ${this.opts.target} clips finales de estos candidatos:\n\n${compact}`,
+      user: `Choose the best ${this.opts.target} final clips from these candidates:\n\n${compact}`,
       schemaName: "highlights",
       jsonSchema: globalJsonSchema,
       validate: (d) => globalSchema.parse(d),
