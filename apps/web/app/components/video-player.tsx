@@ -98,11 +98,29 @@ function EditorBody() {
  * transcript y composer.
  */
 function VideoStage() {
-  const { videoRef, url, loadError, setCurrentTime, setDuration } = useClipEditor();
+  const { videoRef, url, loadError, activeId, clips, clearActive, handleTimeUpdate, setDuration } =
+    useClipEditor();
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
+  const active = clips.find((c) => c._id === activeId) ?? null;
+
   return (
-    <div className="shrink-0 border-b border-neutral-800 bg-black">
+    <div className="relative shrink-0 border-b border-neutral-800 bg-black">
+      {/* Indicador del timeline gobernado + salir a video completo */}
+      {active && (
+        <div className="absolute left-2 top-2 z-10 flex items-center gap-2 rounded-full bg-black/70 px-2.5 py-1 text-xs text-neutral-200 backdrop-blur">
+          <span className="truncate max-w-[45vw] md:max-w-xs">
+            ▶ {active.title}
+            {active.segments.length > 1 ? ` · ${active.segments.length} tramos` : ""}
+          </span>
+          <button
+            onClick={clearActive}
+            className="rounded-full border border-neutral-600 px-2 py-0.5 text-neutral-300 hover:bg-neutral-700"
+          >
+            Ver video completo
+          </button>
+        </div>
+      )}
       {loadError ? (
         <p className="p-10 text-center text-sm text-red-300">{loadError}</p>
       ) : url ? (
@@ -116,7 +134,7 @@ function VideoStage() {
             preload="metadata"
             className="mx-auto max-h-[42vh] w-full"
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-            onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+            onTimeUpdate={(e) => handleTimeUpdate(e.currentTarget.currentTime)}
             onError={() =>
               setPlaybackError("Tu navegador no puede reproducir este formato o códec.")
             }

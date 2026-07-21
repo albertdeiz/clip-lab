@@ -25,7 +25,6 @@ import { generationConfigSchema } from "@clip-lab/contracts";
 import { useAuth } from "./auth-context";
 import {
   buildSummary,
-  clipStart,
   sentencesOf,
   snap,
   SUMMARY_TITLE,
@@ -56,6 +55,8 @@ export interface ClipEditorValue {
   setDuration: (d: number) => void;
   seek: (sec: number) => void;
   togglePlay: () => void;
+  /** El <video> reporta su tiempo aquí: aplica el gobernador de segmentos. */
+  handleTimeUpdate: (t: number) => void;
   // transcript
   transcript: TranscriptResponse | null;
   words: TranscriptWord[];
@@ -78,6 +79,7 @@ export interface ClipEditorValue {
   generating: boolean;
   generatedKey: number;
   setActive: (id: string) => void;
+  clearActive: () => void;
   createClip: (range: Segment) => void;
   replaceActive: (range: Segment) => void;
   addSegmentToActive: (range: Segment) => void;
@@ -229,12 +231,63 @@ export function ClipEditorProvider({
   }, [videoId, authedFetch, momentsNonce]);
 
   // --- playback ---
-  const seek = useCallback((sec: number) => {
+  // Índice del segmento del item activo que se está reproduciendo (gobernador).
+  const playSeg = useRef(0);
+
+  const seekTo = useCallback((sec: number, play = true) => {
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = Math.max(0, sec);
-    void v.play().catch(() => undefined);
+    if (play) void v.play().catch(() => undefined);
   }, []);
+
+  // Seek "inteligente": dentro del item activo → sigue gobernado; fuera → ver
+  // completo (deselecciona) y salta ahí; sin item → seek normal.
+  const seek = useCallback(
+    (sec: number) => {
+      const c = clips.find((x) => x._id === activeId);
+      if (c) {
+        const idx = c.segments.findIndex((s) => sec >= s.start && sec < s.end);
+        if (idx >= 0) {
+          playSeg.current = idx;
+          seekTo(sec);
+          return;
+        }
+        setActiveId(null); // clic fuera del item → video completo
+      }
+      seekTo(sec);
+    },
+    [clips, activeId, seekTo],
+  );
+
+  // Gobernador: el item activo (1 o N segmentos, en orden) rige la reproducción.
+  const handleTimeUpdate = useCallback(
+    (t: number) => {
+      setCurrentTime(t);
+      const c = clips.find((x) => x._id === activeId);
+      if (!c || c.segments.length === 0) return; // sin item → normal
+      const segs = c.segments;
+      // Dentro de algún segmento (incluye scrub a otro tramo): seguir ahí.
+      const inIdx = segs.findIndex((s) => t >= s.start && t < s.end);
+      if (inIdx >= 0) {
+        playSeg.current = inIdx;
+        return;
+      }
+      // Fuera de todo segmento: avanzar al siguiente (loop) o entrar al actual.
+      // Preserva el estado de pausa (no forzar play si el usuario pausó).
+      const keepPlaying = !videoRef.current?.paused;
+      const i = playSeg.current < segs.length ? playSeg.current : 0;
+      const seg = segs[i]!;
+      if (t >= seg.end) {
+        const next = (i + 1) % segs.length; // loop al primero tras el último
+        playSeg.current = next;
+        seekTo(segs[next]!.start, keepPlaying);
+      } else {
+        seekTo(seg.start, keepPlaying); // estamos antes del segmento → entrar
+      }
+    },
+    [clips, activeId, seekTo],
+  );
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
@@ -250,20 +303,19 @@ export function ClipEditorProvider({
     [],
   );
 
-  const setActive = useCallback((id: string) => {
-    setActiveId(id);
-    setClips((prev) => {
-      const c = prev.find((x) => x._id === id);
-      if (c) {
-        const v = videoRef.current;
-        if (v) {
-          v.currentTime = Math.max(0, clipStart(c));
-          void v.play().catch(() => undefined);
-        }
+  const setActive = useCallback(
+    (id: string) => {
+      setActiveId(id);
+      const c = clips.find((x) => x._id === id);
+      if (c && c.segments[0]) {
+        playSeg.current = 0;
+        seekTo(c.segments[0].start); // arranca en el primer segmento
       }
-      return prev;
-    });
-  }, []);
+    },
+    [clips, seekTo],
+  );
+
+  const clearActive = useCallback(() => setActiveId(null), []);
 
   const createClip = useCallback((range: Segment) => {
     const ec = toEditClips([
@@ -567,6 +619,7 @@ export function ClipEditorProvider({
       setDuration,
       seek,
       togglePlay,
+      handleTimeUpdate,
       transcript,
       words,
       sentences,
@@ -586,6 +639,7 @@ export function ClipEditorProvider({
       generating,
       generatedKey,
       setActive,
+      clearActive,
       createClip,
       replaceActive,
       addSegmentToActive,
@@ -616,6 +670,7 @@ export function ClipEditorProvider({
       duration,
       seek,
       togglePlay,
+      handleTimeUpdate,
       transcript,
       words,
       sentences,
@@ -634,6 +689,7 @@ export function ClipEditorProvider({
       generating,
       generatedKey,
       setActive,
+      clearActive,
       createClip,
       replaceActive,
       addSegmentToActive,
