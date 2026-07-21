@@ -20,15 +20,23 @@ video and writing the result.
 pnpm highlights:manual dump "<userEmail>" "<videoTitle|videoId>"
 ```
 
-**2. Produce the highlights JSON** — an array of objects matching the schema:
+**2. Produce the moments JSON** — an array of objects (same contract as the
+on-demand generation):
 ```json
 [
-  { "start": 218, "end": 245, "score": 0.95,
-    "title": "Short, catchy title", "reason": "Why it's a good clip" }
+  { "title": "Short, catchy title", "reason": "Why it's a good clip",
+    "score": 0.95, "start": 218, "end": 245 },
+
+  { "title": "Summary of the video", "reason": "Recap", "score": 1,
+    "summary": true,
+    "segments": [ { "start": 22, "end": 31 }, { "start": 206, "end": 217 } ] }
 ]
 ```
-`start`/`end` in seconds, `score` 0–1, ordered best→worst. Each clip should be
-self-contained (~20–90s), with a clear hook. Save it to a file (e.g. `hl.json`).
+`score` 0–1, ordered best→worst. Each moment is either a simple cut (`start`/`end`
+in seconds) or a stitched clip via `segments` (a line of thought / summary — in
+that case `start`/`end` are derived as the envelope). Mark the recap with
+`summary: true`. Self-contained clips (~15–90s) with a clear hook. Save to a file
+(e.g. `hl.json`).
 
 **3. Apply it** (inserts/updates the `HighlightSet` as `DONE`, `model: manual`,
 `costUsd: 0` — idempotent):

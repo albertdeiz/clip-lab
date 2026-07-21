@@ -7,9 +7,17 @@
  *   node scripts/manual-highlights.cjs apply "<userEmail>" "<videoTitle|videoId>" [highlights.json]
  *
  * Flujo (human-in-the-loop): `dump` imprime el transcript alineado por tiempo;
- * una persona/LLM produce el JSON de highlights ([{start,end,score,title,reason}]);
- * `apply` lo inserta como HighlightSet DONE (model "manual", costUsd 0).
- * Es un puente temporal: para automatizar, configura un proveedor (Ollama/API).
+ * una persona/LLM produce el JSON de momentos; `apply` lo inserta como
+ * HighlightSet DONE (model "manual", costUsd 0). Es un puente temporal: para
+ * automatizar, configura un proveedor (Ollama/API) y usa el panel de generación.
+ *
+ * Forma de cada momento (mismo contrato que la generación on-demand):
+ *   { "title", "reason", "score",
+ *     "start", "end"           // corte simple, O BIEN:
+ *     "segments": [{start,end}, …]   // clip cosido / línea de pensamiento
+ *     "summary": true          // opcional: marca el clip resumen
+ *   }
+ * Con `segments`, start/end se calculan como envolvente automáticamente.
  *
  * DATABASE_URL se toma del .env raíz (Node >=20.12) o del entorno.
  */
@@ -26,7 +34,12 @@ try {
 // Silencia el log de queries de Prisma para no ensuciar el stdout del dump.
 process.env.NODE_ENV = "production";
 const { prisma } = require(path.join(ROOT, "packages/db/dist/index.js"));
+const { generationConfigSchema } = require(
+  path.join(ROOT, "packages/contracts/dist/index.js"),
+);
 
+// Config "manual" = defaults del contrato (para consistencia con el panel).
+const MANUAL_CONFIG = generationConfigSchema.parse({});
 const BUCKET_SECONDS = 12;
 
 function fmt(s) {
@@ -76,19 +89,42 @@ async function dump(userEmail, ref) {
   if (buf.length) console.log(`[${fmt(start)}-end] ${buf.join("").trim()}`);
 }
 
+function normSeg(s, ctx) {
+  if (typeof s.start !== "number" || typeof s.end !== "number" || s.end <= s.start)
+    throw new Error(`Tramo inválido (start/end): ${ctx}`);
+  return { start: s.start, end: s.end };
+}
+
 function readHighlights(fileArg) {
   const raw = fileArg ? fs.readFileSync(fileArg, "utf8") : fs.readFileSync(0, "utf8");
   const items = JSON.parse(raw);
-  if (!Array.isArray(items)) throw new Error("El JSON debe ser un array de highlights.");
-  for (const h of items) {
-    if (typeof h.start !== "number" || typeof h.end !== "number" || h.end <= h.start)
-      throw new Error(`Highlight inválido (start/end): ${JSON.stringify(h)}`);
+  if (!Array.isArray(items)) throw new Error("El JSON debe ser un array de momentos.");
+  return items.map((h) => {
+    const ctx = JSON.stringify(h);
     if (typeof h.score !== "number" || typeof h.title !== "string" || typeof h.reason !== "string")
-      throw new Error(`Highlight inválido (score/title/reason): ${JSON.stringify(h)}`);
-  }
-  return items.map((h) => ({
-    start: h.start, end: h.end, score: h.score, title: h.title, reason: h.reason,
-  }));
+      throw new Error(`Momento inválido (score/title/reason): ${ctx}`);
+
+    const segments =
+      Array.isArray(h.segments) && h.segments.length > 0
+        ? h.segments.map((s) => normSeg(s, ctx))
+        : null;
+
+    let start, end;
+    if (segments) {
+      start = Math.min(...segments.map((s) => s.start));
+      end = Math.max(...segments.map((s) => s.end));
+    } else {
+      if (typeof h.start !== "number" || typeof h.end !== "number" || h.end <= h.start)
+        throw new Error(`Momento inválido (falta start/end o segments): ${ctx}`);
+      start = h.start;
+      end = h.end;
+    }
+
+    const item = { start, end, score: h.score, title: h.title, reason: h.reason };
+    if (segments && segments.length > 1) item.segments = segments; // multi-segmento
+    if (h.summary === true) item.summary = true;
+    return item;
+  });
 }
 
 async function apply(userEmail, ref, fileArg) {
@@ -98,11 +134,13 @@ async function apply(userEmail, ref, fileArg) {
     where: { videoId: v.id },
     create: {
       videoId: v.id, status: "DONE", model: "manual", localModel: "manual",
-      promptHash: "manual", contentHash: v.transcript?.contentHash ?? null, items, costUsd: 0,
+      promptHash: "manual", contentHash: v.transcript?.contentHash ?? null,
+      config: MANUAL_CONFIG, items, costUsd: 0,
     },
     update: {
       status: "DONE", model: "manual", localModel: "manual", promptHash: "manual",
-      contentHash: v.transcript?.contentHash ?? null, items, costUsd: 0, failReason: null,
+      contentHash: v.transcript?.contentHash ?? null,
+      config: MANUAL_CONFIG, items, costUsd: 0, failReason: null,
     },
   });
   console.error(`OK: HighlightSet ${set.status} para "${v.title}" (${v.id}) con ${items.length} highlights.`);
