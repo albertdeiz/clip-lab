@@ -33,9 +33,11 @@ caption → export`. Auth/infra/bus first by dependency; billing and scaling
 | Live progress | 4 | 3 | 3 | Bus | 3 d |
 | Synced transcript UI | 4 | 4 | 3 | Worker | 3 d |
 
-## Phase 3 — AI highlight detection — done
-- **Objective:** the LLM proposes viral moments with score and reason (hierarchical pipeline).
+## Phase 3 — AI highlight detection — done (pipeline reworked in Phase 7)
+- **Objective:** the LLM proposes viral moments with score and reason.
 - **Success:** ≥5 highlights per 30-min video with score, title and justification.
+- **Note:** the original hierarchical chunk pipeline is superseded by Phase 7
+  (on-demand, single-pass lines of thought).
 
 | Feature | Value | Crit. | Compl. | Deps | Est. |
 |---|---|---|---|---|---|
@@ -61,6 +63,19 @@ caption → export`. Auth/infra/bus first by dependency; billing and scaling
 |---|---|---|---|---|---|
 | Render Worker (NVENC) | 5 | 5 | 4 | Phase 5 | 4 d |
 | Download + share link | 4 | 4 | 2 | Render | 2 d |
+
+## Phase 7 — On-demand parameterized generation (single-pass lines of thought)
+- **Objective:** the user triggers moment generation with parameters; the model
+  studies the whole transcript in one pass and returns complete lines of thought.
+- **Success:** self-contained, sentence-aligned moments (no mid-idea cuts); a
+  settings panel controls target/duration/granularity/style/language; regenerating
+  respects unsaved edits. Spec: [`iterations/fase-7-generacion-on-demand.md`](./iterations/fase-7-generacion-on-demand.md).
+
+| Feature | Value | Crit. | Compl. | Deps | Est. |
+|---|---|---|---|---|---|
+| Decouple cascade + on-demand `generate` + `HighlightsRequested` | 5 | 5 | 3 | Phase 3 | 3 d |
+| `GenerationConfig` + settings panel + dirty-guard | 5 | 4 | 3 | — | 4 d |
+| Single-pass detector + semantic-sectioning fallback | 5 | 4 | 4 | — | 5 d |
 
 ## Later backlog
 Virality refinement (feedback loop) · B-roll · Brand kit/templates ·

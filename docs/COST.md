@@ -16,7 +16,7 @@ deterministic?"* If deterministic → algorithm/specialized tool.
 | Extract audio, probe, duration, metadata | ❌ | FFmpeg / ffprobe |
 | Transcription (speech→text + timestamps) | ❌ (specialized) | Whisper |
 | Silence detection / cut on pauses | ❌ | FFmpeg `silencedetect` |
-| Transcript chunking / segmentation | ❌ | Algorithm |
+| Sentence segmentation / semantic sectioning (long videos) | ❌ | Algorithm |
 | Cut, scale, concatenate, render | ❌ | FFmpeg / NVENC |
 | 9:16 reframe / face tracking | ❌ (specialized vision) | Face detector |
 | Semantic search / moment dedup | ❌ (embeddings) | Embeddings + pgvector |
@@ -43,22 +43,27 @@ API (−50%) in non-interactive flows, structured JSON outputs.
 
 ---
 
-## 3. Hierarchical pipeline
+## 3. Generation pipeline (single-pass, on-demand)
 
 ```
-Transcript → context reduction (algorithm: drop silences/filler/repetition)
-          → chunker (2–3 min, ~20s overlap, cut on pauses)
-          → PARALLEL local per-chunk analysis (Haiku)  →  candidates+score+hook
-          → aggregate + rank + dedup via embeddings (algorithm)
-          → top candidates (compact representation)
-          → global analysis, 1 call (Sonnet)  →  final highlights JSON
+Transcript → sentence segmentation (algorithm, snap.ts)
+          → token budget check
+   ├─ within budget (default): single-pass analysis, 1 call → lines of thought
+   │                            (ranked, sentence-aligned, optionally multi-segment)
+   └─ over budget (long video): semantic sectioning (natural topic/pause bounds,
+                                NOT fixed time) → per-section pass → light merge
+          → deterministic post: sentence-snap + dedup + duration enforcement
+          → final highlights JSON
 ```
 
-**Chunk rationale (2–3 min, ~20s overlap, cut on pauses):** a viral clip lasts
-20–90s; the window contains a complete "moment" without fragmenting it while
-keeping per-call context minimal. The overlap avoids losing moments at the edge;
-cutting on pauses (detected by FFmpeg) avoids splitting sentences. Configurable
-(`chunk_seconds`, `overlap_seconds`).
+**Why single-pass, not equal-time chunks:** modern context windows (Sonnet/Opus
+~1M tokens) hold an entire transcript (10 min ≈ ~2k tokens; 2 h ≈ ~30k), so
+fixed-time chunking is unnecessary and actively fragments ideas across >2 pieces.
+One pass gives the model a global view → complete, self-contained *lines of
+thought* with natural boundaries, better coherence and ranking. Chunking is kept
+only as a **long-video fallback**, cut at natural boundaries so ideas stay whole.
+Generation is **on-demand and parameterized** (`GenerationConfig`); model tier is
+a server-side choice. See [`iterations/fase-7-generacion-on-demand.md`](./iterations/fase-7-generacion-on-demand.md).
 
 ---
 
@@ -74,17 +79,21 @@ Every AI result is stored and reused (an AI artifact carries): `entity_type`,
 
 ---
 
-## 5. Per-feature cost model (§14 template — e.g. highlights, 40-min video)
+## 5. Per-feature cost model (§14 template — e.g. highlights, single-pass)
 
-| Stage | Calls | in/out approx | Model | Cost |
+One structured call over the full transcript (input dominated by the transcript,
+sent once; output = ranked moments JSON):
+
+| Video | Transcript approx | Calls | Model | Cost |
 |---|---|---|---|---|
-| Local analysis | 16 chunks | 900 / 300 | Haiku 4.5 | ~$0.038 |
-| Global rerank | 1 | 2,000 / 800 | Sonnet 5 | ~$0.012 |
-| Titles/hooks | 1 (batch) | 1,500 / 600 | Sonnet 5 | ~$0.009 |
-| **Total LLM / video** | | | | **≈ $0.06** (≈ $0.03–0.04 with batch+cache) |
+| 10 min | ~2k tok in / ~1k out | 1 | Sonnet 5 | ~$0.02 |
+| 40 min | ~8k tok in / ~1.5k out | 1 | Sonnet 5 | ~$0.05 (Haiku ~$0.02) |
+| 2 h (fallback) | ~30k tok | ~3–5 sections + merge | Sonnet 5 | scales w/ sections |
 
-At 150k videos/month: ~$9,000/month unoptimized, ~$4,500 with batch+cache. GPU
-compute (Whisper + render) dominates, so the LLM stays a small fraction.
+Cheaper and better than the old Haiku fan-out + rerank for typical videos (one
+call, global coherence). At 150k videos/month (~10-min avg): ≈ $3,000/month,
+lower with caching. GPU compute (Whisper + render) still dominates, so the LLM
+stays a small fraction.
 
 **Every iteration that uses AI includes this table** (tokens, calls, cost/video,
 cost/month, alternatives, caching, incremental).

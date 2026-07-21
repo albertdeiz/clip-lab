@@ -105,11 +105,15 @@ publishes pending ones to RabbitMQ.
 
 ### Event chain (built per phase)
 ```
-VideoUploaded → TranscriptGenerated → HighlightsDetected →
-ClipGenerated → ClipRendered → ExportCompleted
+VideoUploaded → TranscriptGenerated                    (auto on upload)
+HighlightsRequested → HighlightsGenerated              (on-demand, user-triggered)
+HighlightsGenerated → ClipGenerated → ClipRendered → ExportCompleted
 ```
-Contract per event: name, producer, consumers, payload, guarantees
-(at-least-once), idempotency (`eventId`), retries (backoff), DLQ.
+Transcription is automatic (the transcript is the editing canvas and costs no
+LLM); **moment generation is on-demand and parameterized** — the transcript no
+longer cascades into highlights. Contract per event: name, producer, consumers,
+payload, guarantees (at-least-once), idempotency (`eventId`), retries (backoff),
+DLQ.
 
 ---
 
@@ -120,8 +124,11 @@ Summary; detail in [`docs/COST.md`](./docs/COST.md).
 - **The LLM never receives the video**: video → audio → transcription → segmentation → LLM.
 - **The LLM only reasons**. Cuts, timestamps, formats, silences, reframing,
   concatenation, render, metadata → algorithms/FFmpeg/specialized models.
-- **Hierarchical pipeline**: Whisper → chunks (2–3 min) → parallel local
-  analysis (Haiku) → algorithmic ranking/dedup → top candidates → global rerank (Sonnet).
+- **Single-pass generation** (on-demand, parameterized): Whisper → sentence
+  segmentation → one LLM call over the full transcript → complete *lines of
+  thought* (ranked, sentence-aligned, optionally multi-segment). Equal-time
+  chunking is dropped (it fragmented ideas); a **semantic-sectioning fallback**
+  handles very long videos. See [`docs/iterations/fase-7-generacion-on-demand.md`](./docs/iterations/fase-7-generacion-on-demand.md).
 - **Reduce context** before invoking (drop silences, filler words, repetition).
 - **Cache + persist** every AI artifact (model, prompt/content hash, cost,
   version) → reuse and incremental reprocessing.
@@ -147,7 +154,9 @@ reason. See [`CLAUDE.md`](./CLAUDE.md) → AI providers.
 
 Entities: `User 1—N OAuthAccount`, `User 1—N Video`, `User 1—N RefreshToken`,
 `Video 1—1 Upload`, `Video 1—1 Transcript`, `Video 1—1 HighlightSet`,
-`OutboxEvent`. Video states: `UPLOADING → PROCESSING → READY | FAILED`. Full
+`Video 1—N Clip`, `OutboxEvent`. Video states: `UPLOADING → PROCESSING → READY
+| FAILED`. `HighlightSet` is an AI artifact that also stores the
+`GenerationConfig` used and starts `IDLE` until generation is requested. Full
 schema in [`packages/db/prisma/schema.prisma`](./packages/db/prisma/schema.prisma).
 
 Versioning: versioned Prisma migrations; in production only additive/compatible
@@ -176,7 +185,9 @@ changes (expand/contract), never `DROP` in the same release.
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md). Phases:
 1. **Ingestion** (auth, multipart upload, metadata, player) — done
 2. Transcription (Whisper + RabbitMQ) — done
-3. Highlight detection (hierarchical LLM) — done
-4. Clip generation (FFmpeg + 9:16 reframe)
+3. Highlight detection (LLM) — done
+4. Clip generation (FFmpeg + 9:16 reframe, multi-segment) — done
 5. Animated captions
 6. Export & download
+7. On-demand parameterized generation (single-pass lines of thought) — reworks
+   the Phase 3 pipeline
