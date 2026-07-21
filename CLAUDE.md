@@ -18,10 +18,11 @@ iterations** — each phase leaves the product working end-to-end.
   9:16 reframe, incl. multi-segment "summary" clips). Plus a transcript-centric
   clip editor (decorators + context + shortcuts), retries (auto backoff +
   manual) and a provider-agnostic AI layer.
-- **In progress — Phase 7**: reworking generation to be **on-demand and
-  parameterized**, with **single-pass whole-transcript analysis** (complete
-  "lines of thought", dropping equal-time chunking). Spec:
-  [`docs/iterations/fase-7-generacion-on-demand.md`](./docs/iterations/fase-7-generacion-on-demand.md).
+- **Phase 7 done**: generation is **on-demand and parameterized**
+  (`GenerationConfig` + settings panel; `HighlightsRequested` event) and uses
+  **single-pass whole-transcript analysis** (complete "lines of thought", with a
+  semantic-sectioning fallback for very long videos; equal-time chunking dropped).
+  Spec: [`docs/iterations/fase-7-generacion-on-demand.md`](./docs/iterations/fase-7-generacion-on-demand.md).
 - **Later**: Phase 5 — Animated captions (word-level karaoke). See
   [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 

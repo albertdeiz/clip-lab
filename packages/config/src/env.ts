@@ -51,13 +51,9 @@ export const envSchema = z.object({
   HIGHLIGHT_GLOBAL_BASE_URL: z.string().url().optional(),
   HIGHLIGHT_GLOBAL_API_KEY: z.string().optional(),
 
-  CHUNK_SECONDS: z.coerce.number().int().positive().default(150),
-  CHUNK_OVERLAP_SECONDS: z.coerce.number().int().nonnegative().default(20),
-  HIGHLIGHTS_TARGET: z.coerce.number().int().positive().default(10),
-  // Cortes coherentes: los highlights se ajustan a frases completas y a esta
-  // duración objetivo (segundos); las frases se separan por puntuación o pausa.
-  HIGHLIGHT_MIN_SEC: z.coerce.number().positive().default(15),
-  HIGHLIGHT_MAX_SEC: z.coerce.number().positive().default(90),
+  // Segmentación en frases (separación por puntuación o pausa) para los cortes
+  // coherentes. El resto de parámetros de generación (target, duración,
+  // granularidad, estilo…) viven en el GenerationConfig on-demand, no en env.
   SENTENCE_PAUSE_SEC: z.coerce.number().positive().default(0.8),
 
   // --- Proceso: generación de clips (FFmpeg) ---

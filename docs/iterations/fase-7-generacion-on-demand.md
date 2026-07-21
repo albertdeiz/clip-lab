@@ -7,9 +7,13 @@ thought** (each sentence-aligned and possibly multi-segment). This reworks the
 Phase 3 pipeline; the editor and multi-segment clips (Iterations 5–6 of the
 editor work) stay as-is.
 
-**Status:** designed (this spec). Supersedes the auto-cascade and the
+**Status:** implemented (A: on-demand + config + panel; B: single-pass detector +
+semantic-sectioning fallback). Supersedes the auto-cascade and the
 `chunk → per-chunk Haiku → aggregate → global rerank` pipeline of
-[`fase-3-highlights.md`](./fase-3-highlights.md).
+[`fase-3-highlights.md`](./fase-3-highlights.md). The LLM call itself needs a
+configured provider key; the deterministic path (segmentation, branch selection,
+sectionize, snap, event wiring) is verified E2E, and without a key the job ends
+`FAILED` with a clear reason.
 
 ## 1. What changes and why
 

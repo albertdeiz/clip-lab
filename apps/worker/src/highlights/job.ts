@@ -45,26 +45,32 @@ export async function detectHighlights(
 
   try {
     const detector = new HighlightDetector(
-      createLlmProvider(
-        env.HIGHLIGHT_LOCAL_PROVIDER,
-        { baseUrl: env.HIGHLIGHT_LOCAL_BASE_URL, apiKey: env.HIGHLIGHT_LOCAL_API_KEY },
-        env,
-      ),
+      // primary (una pasada) = proveedor global
       createLlmProvider(
         env.HIGHLIGHT_GLOBAL_PROVIDER,
         { baseUrl: env.HIGHLIGHT_GLOBAL_BASE_URL, apiKey: env.HIGHLIGHT_GLOBAL_API_KEY },
         env,
       ),
+      // section (fallback) = proveedor local
+      createLlmProvider(
+        env.HIGHLIGHT_LOCAL_PROVIDER,
+        { baseUrl: env.HIGHLIGHT_LOCAL_BASE_URL, apiKey: env.HIGHLIGHT_LOCAL_API_KEY },
+        env,
+      ),
       {
-        localModel: env.HIGHLIGHT_LOCAL_MODEL,
-        globalModel: env.HIGHLIGHT_GLOBAL_MODEL,
-        chunkSeconds: env.CHUNK_SECONDS,
-        overlapSeconds: env.CHUNK_OVERLAP_SECONDS,
+        // Modelo principal (una pasada) = global; por sección (fallback) = local.
+        model: env.HIGHLIGHT_GLOBAL_MODEL,
+        sectionModel: env.HIGHLIGHT_LOCAL_MODEL,
         // Parámetros de comportamiento: del config on-demand (no de env).
         target: config.targetCount,
         minSec: config.minSec,
         maxSec: config.maxSec,
         pauseSec: env.SENTENCE_PAUSE_SEC,
+        granularity: config.granularity,
+        style: config.style,
+        titleLanguage: config.titleLanguage,
+        allowMultiSegment: config.allowMultiSegment,
+        includeSummary: config.includeSummary,
       },
     );
     const result = await detector.detect(words);
