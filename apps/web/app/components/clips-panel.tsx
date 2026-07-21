@@ -105,6 +105,11 @@ export function ClipsPanel({
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
+    const startedAt = Date.now();
+    // Tras una (re)generación (reloadKey>0) el worker borra y recrea los clips;
+    // seguimos sondeando durante una ventana de gracia para no perder el arranque
+    // del render aunque un poll caiga en el hueco borrado→RENDERING.
+    const graceMs = reloadKey > 0 ? 45_000 : 0;
     const poll = async () => {
       try {
         const items = await load();
@@ -112,9 +117,13 @@ export function ClipsPanel({
         const pending = items.some(
           (c) => c.status === "QUEUED" || c.status === "RENDERING",
         );
-        if (pending) timer = setTimeout(poll, 3000);
+        if (pending || Date.now() - startedAt < graceMs) {
+          timer = setTimeout(poll, 3000);
+        }
       } catch {
-        /* reintenta al remontar */
+        if (active && Date.now() - startedAt < graceMs) {
+          timer = setTimeout(poll, 3000);
+        }
       }
     };
     void poll();
@@ -136,12 +145,33 @@ export function ClipsPanel({
     }
   }
 
+  const total = clips?.length ?? 0;
+  const ready = clips?.filter((c) => c.status === "READY").length ?? 0;
+  const failed = clips?.filter((c) => c.status === "FAILED").length ?? 0;
+  const pending = clips?.filter(
+    (c) => c.status === "QUEUED" || c.status === "RENDERING",
+  ).length ?? 0;
+
   return (
     <div className="p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <span className="text-xs uppercase tracking-widest text-neutral-500">
           Clips generados
         </span>
+        {clips && total > 0 && (
+          <span className="flex items-center gap-1.5 text-xs">
+            {pending > 0 ? (
+              <>
+                <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" />
+                <span className="text-sky-300">Renderizando {ready}/{total}…</span>
+              </>
+            ) : (
+              <span className="text-neutral-500">
+                {ready} listos{failed > 0 ? ` · ${failed} con error` : ""}
+              </span>
+            )}
+          </span>
+        )}
         {showGenerate && (
           <button
             onClick={() => void generate()}

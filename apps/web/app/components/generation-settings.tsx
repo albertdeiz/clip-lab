@@ -155,21 +155,25 @@ export function GenerationSettings() {
         </div>
       </details>
 
-      {momentsFailReason && (
+      {momentsFailReason && !busy && (
         <p className="text-xs text-red-400">{momentsFailReason}</p>
       )}
 
-      <button
-        onClick={onGenerate}
-        disabled={busy}
-        className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-      >
-        {busy
-          ? "Generando momentos…"
-          : isIdle
-            ? "Generar momentos"
-            : "Regenerar momentos"}
-      </button>
+      {busy ? (
+        <div className="flex items-center gap-2 rounded-lg border border-violet-700/50 bg-violet-600/10 px-3 py-2 text-sm text-violet-200">
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-violet-400" />
+          {momentsStatus === "DETECTING"
+            ? "Analizando el video…"
+            : "En cola…"}
+        </div>
+      ) : (
+        <button
+          onClick={onGenerate}
+          className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"
+        >
+          {isIdle ? "Generar momentos" : "Regenerar momentos"}
+        </button>
+      )}
     </div>
   );
 }
