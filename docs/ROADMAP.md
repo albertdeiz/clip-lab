@@ -77,6 +77,19 @@ caption → export`. Auth/infra/bus first by dependency; billing and scaling
 | `GenerationConfig` + settings panel + dirty-guard | 5 | 4 | 3 | — | 4 d |
 | Single-pass detector + semantic-sectioning fallback | 5 | 4 | 4 | — | 5 d |
 
+## Phase 8 — Transcript-centric clip editor — done
+- **Objective:** edit clips from the transcript (the timeline); multi-segment
+  "lines of thought" + summary; preview governed by the active item.
+- **Success:** select text → build/trim clips; a virtual segment timeline bar
+  (draggable + time labels) rules preview; follow/pin; live generation & render
+  status. Spec: [`iterations/fase-8-editor.md`](./iterations/fase-8-editor.md).
+
+| Feature | Value | Crit. | Compl. | Deps | Est. |
+|---|---|---|---|---|---|
+| Editor architecture (context + decorators + shortcuts) | 5 | 4 | 4 | Phase 3 | 4 d |
+| Multi-segment + summary clips (concat render) | 5 | 4 | 4 | Phase 4 | 4 d |
+| Governed preview + virtual segment timeline bar | 4 | 3 | 3 | — | 3 d |
+
 ## Later backlog
 Virality refinement (feedback loop) · B-roll · Brand kit/templates ·
 Multi-format (1:1, 16:9) · Scheduled publishing to social · Billing/plans +

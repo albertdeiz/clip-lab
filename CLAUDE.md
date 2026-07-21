@@ -23,6 +23,14 @@ iterations** — each phase leaves the product working end-to-end.
   **single-pass whole-transcript analysis** (complete "lines of thought", with a
   semantic-sectioning fallback for very long videos; equal-time chunking dropped).
   Spec: [`docs/iterations/fase-7-generacion-on-demand.md`](./docs/iterations/fase-7-generacion-on-demand.md).
+- **Phase 8 done — transcript-centric editor**: the transcript is the timeline
+  and editing surface (select → create/replace/add-segment, trim handles, snap,
+  keyboard commands). Multi-segment "line of thought" + summary clips. Preview is
+  **governed by the active item's segments** (play in order, loop) with a
+  **virtual segment timeline bar** (draggable playhead + per-segment time labels)
+  and a **sticky follow/pin** toggle (auto-unpins on scroll). Live status for
+  generation and clip rendering. Spec:
+  [`docs/iterations/fase-8-editor.md`](./docs/iterations/fase-8-editor.md).
 - **Later**: Phase 5 — Animated captions (word-level karaoke). See
   [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 
