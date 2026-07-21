@@ -53,7 +53,7 @@ export function TranscriptEditor() {
   );
   useEffect(() => {
     if (follow && playingIdx >= 0) {
-      playingRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      playingRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [follow, playingIdx]);
 
@@ -157,10 +157,11 @@ export function TranscriptEditor() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onWheel={() => follow && setFollow(false)}
       className="select-none p-4 text-[15px] leading-8"
       style={{ touchAction: "none" }}
     >
-      <div className="mb-3 flex items-center gap-2 text-xs text-neutral-600">
+      <div className="sticky top-0 z-10 -mx-4 mb-3 flex items-center gap-2 border-b border-neutral-800/60 bg-neutral-950/95 px-4 py-2 text-xs text-neutral-600 backdrop-blur">
         <span className="rounded bg-neutral-800 px-1.5 py-0.5 uppercase">
           {language ?? "?"}
         </span>

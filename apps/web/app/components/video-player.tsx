@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ClipEditorProvider, useClipEditor } from "../lib/clip-editor-context";
+import { colorOf, fmt, segDur } from "../lib/editor";
 import { TranscriptEditor } from "./transcript-editor";
 import { Composer } from "./composer";
 
@@ -146,6 +147,75 @@ function VideoStage() {
       ) : (
         <p className="p-10 text-center text-sm text-neutral-500">Cargando…</p>
       )}
+      <SegmentBar />
+    </div>
+  );
+}
+
+/**
+ * Barra de timeline virtual: muestra SOLO los segmentos del item activo (anchos
+ * proporcionales a su duración), con el cabezal en la posición virtual. Click
+ * para saltar dentro del timeline del item. No aparece si no hay item activo.
+ */
+function SegmentBar() {
+  const { clips, activeId, currentTime, seek } = useClipEditor();
+  const idx = clips.findIndex((c) => c._id === activeId);
+  const active = idx >= 0 ? clips[idx]! : null;
+  if (!active) return null;
+
+  const segs = active.segments;
+  const color = colorOf(idx);
+  const durs = segs.map(segDur);
+  const total = durs.reduce((a, b) => a + b, 0) || 1;
+  let acc = 0;
+  const blocks = segs.map((s, i) => {
+    const off = acc;
+    acc += durs[i]!;
+    return { s, off, dur: durs[i]!, i };
+  });
+
+  const inIdx = segs.findIndex((s) => currentTime >= s.start && currentTime < s.end);
+  const virt = inIdx >= 0 ? blocks[inIdx]!.off + (currentTime - segs[inIdx]!.start) : 0;
+  const playPct = Math.max(0, Math.min(100, (virt / total) * 100));
+
+  function onSeek(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const v = ((e.clientX - rect.left) / rect.width) * total;
+    let bi = blocks.findIndex((b) => v >= b.off && v < b.off + b.dur);
+    if (bi < 0) bi = blocks.length - 1;
+    const b = blocks[bi]!;
+    seek(Math.min(b.s.start + (v - b.off), b.s.end - 0.05));
+  }
+
+  return (
+    <div className="space-y-1 bg-neutral-950 px-3 py-2">
+      <div
+        onClick={onSeek}
+        className="relative flex h-2.5 cursor-pointer overflow-hidden rounded"
+        title="Timeline del item · click para saltar"
+      >
+        {blocks.map((b) => (
+          <div
+            key={b.i}
+            style={{ width: `${(b.dur / total) * 100}%` }}
+            className={`h-full ${b.i === inIdx ? color.spanActive : color.span} ${
+              b.i > 0 ? "border-l border-neutral-950" : ""
+            }`}
+          />
+        ))}
+        <div
+          className="pointer-events-none absolute top-0 h-full w-0.5 bg-white"
+          style={{ left: `${playPct}%` }}
+        />
+      </div>
+      <div className="flex justify-between text-[10px] text-neutral-500">
+        <span>
+          {fmt(virt)} / {fmt(total)}
+        </span>
+        <span>
+          {segs.length} tramo{segs.length > 1 ? "s" : ""}
+        </span>
+      </div>
     </div>
   );
 }
