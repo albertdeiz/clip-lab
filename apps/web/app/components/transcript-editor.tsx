@@ -53,7 +53,7 @@ export function TranscriptEditor() {
   );
   useEffect(() => {
     if (follow && playingIdx >= 0) {
-      playingRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      playingRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
   }, [follow, playingIdx]);
 
