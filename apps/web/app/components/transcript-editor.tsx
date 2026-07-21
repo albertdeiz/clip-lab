@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { colorOf, fmt, wordInRange } from "../lib/editor";
 import { decorateWord } from "../lib/decorators";
 import { useClipEditor } from "../lib/clip-editor-context";
@@ -43,6 +43,19 @@ export function TranscriptEditor() {
   const containerRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag>(null);
   const moved = useRef(false);
+
+  // Seguir la reproducción (pin): auto-scroll a la palabra que suena.
+  const [follow, setFollow] = useState(true);
+  const playingRef = useRef<HTMLButtonElement>(null);
+  const playingIdx = useMemo(
+    () => words.findIndex((w) => currentTime >= w.start && currentTime < w.end),
+    [words, currentTime],
+  );
+  useEffect(() => {
+    if (follow && playingIdx >= 0) {
+      playingRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [follow, playingIdx]);
 
   const activeIdx = clips.findIndex((c) => c._id === activeId);
   const activeClip = activeIdx >= 0 ? clips[activeIdx]! : null;
@@ -151,10 +164,20 @@ export function TranscriptEditor() {
         <span className="rounded bg-neutral-800 px-1.5 py-0.5 uppercase">
           {language ?? "?"}
         </span>
-        <span>
-          Arrastra para seleccionar · click para saltar · manijas del clip activo
-          para recortar cada tramo
+        <span className="min-w-0 flex-1 truncate">
+          Arrastra para seleccionar · click para saltar · manijas para recortar
         </span>
+        <button
+          onClick={() => setFollow((f) => !f)}
+          title={follow ? "Dejar de seguir la reproducción" : "Seguir la reproducción"}
+          className={`shrink-0 rounded-full border px-2 py-0.5 ${
+            follow
+              ? "border-violet-500/60 bg-violet-600/20 text-violet-200"
+              : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+          }`}
+        >
+          {follow ? "📌 Siguiendo" : "📍 Seguir"}
+        </button>
       </div>
       <p className="flex flex-wrap items-center gap-x-1 gap-y-1">
         {words.map((word, i) => {
@@ -187,7 +210,12 @@ export function TranscriptEditor() {
                   />
                 </span>
               ))}
-              <button data-idx={i} onClick={(e) => e.preventDefault()} className={cls}>
+              <button
+                data-idx={i}
+                ref={i === playingIdx ? playingRef : undefined}
+                onClick={(e) => e.preventDefault()}
+                className={cls}
+              >
                 {word.w.trim()}
               </button>
               {ends.map((m) => (
