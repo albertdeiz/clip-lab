@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ClipEditorProvider, useClipEditor } from "../lib/clip-editor-context";
 import { colorOf, fmt, segDur } from "../lib/editor";
 import { TranscriptEditor } from "./transcript-editor";
@@ -159,6 +159,8 @@ function VideoStage() {
  */
 function SegmentBar() {
   const { clips, activeId, currentTime, seek } = useClipEditor();
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
   const idx = clips.findIndex((c) => c._id === activeId);
   const active = idx >= 0 ? clips[idx]! : null;
   if (!active) return null;
@@ -178,9 +180,12 @@ function SegmentBar() {
   const virt = inIdx >= 0 ? blocks[inIdx]!.off + (currentTime - segs[inIdx]!.start) : 0;
   const playPct = Math.max(0, Math.min(100, (virt / total) * 100));
 
-  function onSeek(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const v = ((e.clientX - rect.left) / rect.width) * total;
+  function seekFromX(clientX: number) {
+    const el = barRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const v = pct * total;
     let bi = blocks.findIndex((b) => v >= b.off && v < b.off + b.dur);
     if (bi < 0) bi = blocks.length - 1;
     const b = blocks[bi]!;
@@ -190,9 +195,21 @@ function SegmentBar() {
   return (
     <div className="space-y-1 bg-neutral-950 px-3 py-2">
       <div
-        onClick={onSeek}
-        className="relative flex h-2.5 cursor-pointer overflow-hidden rounded"
-        title="Timeline del item · click para saltar"
+        ref={barRef}
+        onPointerDown={(e) => {
+          dragging.current = true;
+          barRef.current?.setPointerCapture(e.pointerId);
+          seekFromX(e.clientX);
+        }}
+        onPointerMove={(e) => {
+          if (dragging.current) seekFromX(e.clientX);
+        }}
+        onPointerUp={(e) => {
+          dragging.current = false;
+          barRef.current?.releasePointerCapture(e.pointerId);
+        }}
+        className="relative flex h-2.5 cursor-pointer touch-none overflow-hidden rounded"
+        title="Timeline del item · arrastra para saltar"
       >
         {blocks.map((b) => (
           <div
@@ -203,11 +220,27 @@ function SegmentBar() {
             }`}
           />
         ))}
+        {/* Cabezal arrastrable */}
         <div
-          className="pointer-events-none absolute top-0 h-full w-0.5 bg-white"
-          style={{ left: `${playPct}%` }}
+          className="pointer-events-none absolute top-1/2 h-3.5 w-1 -translate-y-1/2 rounded-full bg-white shadow"
+          style={{ left: `calc(${playPct}% - 2px)` }}
         />
       </div>
+
+      {/* Etiquetas de tiempo por tramo (inicio en el video original) */}
+      <div className="flex">
+        {blocks.map((b) => (
+          <span
+            key={b.i}
+            style={{ width: `${(b.dur / total) * 100}%` }}
+            className={`truncate text-[10px] tabular-nums ${color.text}`}
+            title={`Tramo ${b.i + 1}: ${fmt(b.s.start)}–${fmt(b.s.end)}`}
+          >
+            {fmt(b.s.start)}
+          </span>
+        ))}
+      </div>
+
       <div className="flex justify-between text-[10px] text-neutral-500">
         <span>
           {fmt(virt)} / {fmt(total)}
