@@ -3,7 +3,7 @@ import { prisma, type Prisma } from "@clip-lab/db";
 import {
   EventType,
   ROUTING,
-  type TranscriptGeneratedPayload,
+  type HighlightsRequestedPayload,
   type HighlightsDetectedPayload,
 } from "@clip-lab/contracts";
 import { loadEnv } from "@clip-lab/config";
@@ -16,18 +16,16 @@ import type { Word } from "./chunker.js";
 const env = loadEnv();
 
 /**
- * Detecta highlights para un video ya transcrito. Idempotente por videoId.
- * El proveedor y el modelo de cada etapa (local/global) se eligen por variables
- * de entorno; si falta la credencial, el job falla con motivo claro (no-retry).
+ * Genera los momentos de un video ya transcrito, on-demand y con parámetros
+ * (`config` viaja en el evento HighlightsRequested). El proveedor y el modelo de
+ * cada etapa se eligen server-side por variables de entorno; si falta la
+ * credencial, el job falla con motivo claro (no-retry).
  */
 export async function detectHighlights(
-  payload: TranscriptGeneratedPayload,
+  payload: HighlightsRequestedPayload,
   publish: PublishFn,
 ): Promise<void> {
-  const { videoId, userId } = payload;
-
-  const existing = await prisma.highlightSet.findUnique({ where: { videoId } });
-  if (existing?.status === "DONE") return; // idempotencia
+  const { videoId, userId, config } = payload;
 
   const transcript = await prisma.transcript.findUnique({ where: { videoId } });
   if (!transcript || transcript.status !== "DONE") {
@@ -62,9 +60,10 @@ export async function detectHighlights(
         globalModel: env.HIGHLIGHT_GLOBAL_MODEL,
         chunkSeconds: env.CHUNK_SECONDS,
         overlapSeconds: env.CHUNK_OVERLAP_SECONDS,
-        target: env.HIGHLIGHTS_TARGET,
-        minSec: env.HIGHLIGHT_MIN_SEC,
-        maxSec: env.HIGHLIGHT_MAX_SEC,
+        // Parámetros de comportamiento: del config on-demand (no de env).
+        target: config.targetCount,
+        minSec: config.minSec,
+        maxSec: config.maxSec,
         pauseSec: env.SENTENCE_PAUSE_SEC,
       },
     );
@@ -78,6 +77,7 @@ export async function detectHighlights(
         localModel: result.localModel,
         promptHash: result.promptHash,
         contentHash: transcript.contentHash,
+        config: config as unknown as Prisma.InputJsonValue,
         items: result.items as unknown as Prisma.InputJsonValue,
         costUsd: result.costUsd,
       },

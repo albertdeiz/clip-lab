@@ -16,8 +16,14 @@ import type {
   ClipListResponse,
   SnapWord,
   Segment,
+  GenerationConfig,
 } from "@clip-lab/contracts";
-import { EventType, buildSentences, snapRange } from "@clip-lab/contracts";
+import {
+  EventType,
+  buildSentences,
+  snapRange,
+  generationConfigSchema,
+} from "@clip-lab/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { StorageService } from "../storage/storage.service.js";
 import { toVideoDto } from "./video.mapper.js";
@@ -111,12 +117,14 @@ export class VideoService {
       where: { videoId: id },
     });
     if (!set) {
+      // IDLE = aún no se ha solicitado la generación (on-demand).
       return {
-        status: "QUEUED",
+        status: "IDLE",
         model: null,
         costUsd: null,
         items: [],
         failReason: null,
+        config: null,
       };
     }
     return {
@@ -125,6 +133,7 @@ export class VideoService {
       costUsd: set.costUsd === null ? null : Number(set.costUsd),
       items: Array.isArray(set.items) ? (set.items as Highlight[]) : [],
       failReason: set.failReason,
+      config: (set.config as GenerationConfig | null) ?? null,
     };
   }
 
@@ -196,6 +205,7 @@ export class VideoService {
         ? (updated.items as Highlight[])
         : [],
       failReason: updated.failReason,
+      config: (updated.config as GenerationConfig | null) ?? null,
     };
   }
 
@@ -232,15 +242,20 @@ export class VideoService {
       costUsd: set.costUsd === null ? null : Number(set.costUsd),
       items: Array.isArray(set.items) ? (set.items as Highlight[]) : [],
       failReason: set.failReason,
+      config: (set.config as GenerationConfig | null) ?? null,
     };
   }
 
   /**
-   * Reintenta la detección de highlights: resetea el estado y reencola vía
-   * outbox (re-publica TranscriptGenerated). Útil tras arreglar la config
-   * (p. ej. añadir ANTHROPIC_API_KEY) o ante un fallo transitorio ya agotado.
+   * Genera los momentos on-demand: resuelve el GenerationConfig (defaults +
+   * overrides), marca el set QUEUED y publica HighlightsRequested vía outbox.
+   * Requiere transcripción lista. (Reemplaza al viejo retry auto-cascada.)
    */
-  async retryHighlights(userId: string, id: string): Promise<void> {
+  async generateHighlights(
+    userId: string,
+    id: string,
+    input: unknown,
+  ): Promise<void> {
     await this.loadOwned(userId, id);
     const transcript = await this.prisma.transcript.findUnique({
       where: { videoId: id },
@@ -251,26 +266,25 @@ export class VideoService {
         message: "La transcripción aún no está lista",
       });
     }
-    const words = Array.isArray(transcript.words) ? transcript.words : [];
+    // Body parcial → config completo con defaults.
+    const config: GenerationConfig = generationConfigSchema.parse(input ?? {});
     await this.prisma.$transaction(async (tx) => {
       await tx.highlightSet.upsert({
         where: { videoId: id },
-        create: { videoId: id, status: "QUEUED" },
-        update: { status: "QUEUED", failReason: null },
+        create: { videoId: id, status: "QUEUED", config: config as unknown as object },
+        update: { status: "QUEUED", failReason: null, config: config as unknown as object },
       });
       await tx.outboxEvent.create({
         data: {
           aggregateType: "Video",
           aggregateId: id,
-          type: EventType.TranscriptGenerated,
+          type: EventType.HighlightsRequested,
           payload: {
             eventId: randomUUID(),
-            type: EventType.TranscriptGenerated,
+            type: EventType.HighlightsRequested,
             videoId: id,
             userId,
-            language: transcript.language,
-            model: transcript.model ?? "unknown",
-            wordCount: words.length,
+            config,
             occurredAt: new Date().toISOString(),
           },
         },
@@ -280,7 +294,7 @@ export class VideoService {
 
   /**
    * Reintenta la transcripción: resetea y re-publica VideoUploaded vía outbox.
-   * (Re-transcribir vuelve a disparar highlights en cascada.)
+   * (La transcripción ya NO dispara highlights; la generación es on-demand.)
    */
   async retryTranscript(userId: string, id: string): Promise<void> {
     const video = await this.loadOwned(userId, id);

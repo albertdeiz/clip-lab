@@ -71,10 +71,14 @@ export class VideoController {
     return this.videos.snapHighlights(user.id, id);
   }
 
-  @Post(":id/highlights/retry")
+  @Post(":id/highlights/generate")
   @HttpCode(202)
-  retryHighlights(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.videos.retryHighlights(user.id, id);
+  generateHighlights(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ) {
+    return this.videos.generateHighlights(user.id, id, body);
   }
 
   @Post(":id/transcript/retry")

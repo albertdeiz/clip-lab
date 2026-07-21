@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { generationConfigSchema } from "./api.js";
 
 /**
  * Contratos de eventos de dominio (event-driven).
@@ -13,6 +14,7 @@ import { z } from "zod";
 export const EventType = {
   VideoUploaded: "VideoUploaded",
   TranscriptGenerated: "TranscriptGenerated",
+  HighlightsRequested: "HighlightsRequested",
   HighlightsDetected: "HighlightsDetected",
   ClipGenerated: "ClipGenerated",
 } as const;
@@ -49,6 +51,19 @@ export type TranscriptGeneratedPayload = z.infer<
   typeof transcriptGeneratedPayloadSchema
 >;
 
+export const highlightsRequestedPayloadSchema = z.object({
+  eventId: z.string().uuid(),
+  type: z.literal(EventType.HighlightsRequested),
+  videoId: z.string().uuid(),
+  userId: z.string().uuid(),
+  config: generationConfigSchema,
+  occurredAt: z.string().datetime(),
+});
+
+export type HighlightsRequestedPayload = z.infer<
+  typeof highlightsRequestedPayloadSchema
+>;
+
 export const highlightsDetectedPayloadSchema = z.object({
   eventId: z.string().uuid(),
   type: z.literal(EventType.HighlightsDetected),
@@ -79,6 +94,7 @@ export type ClipGeneratedPayload = z.infer<typeof clipGeneratedPayloadSchema>;
 export const domainEventSchema = z.discriminatedUnion("type", [
   videoUploadedPayloadSchema,
   transcriptGeneratedPayloadSchema,
+  highlightsRequestedPayloadSchema,
   highlightsDetectedPayloadSchema,
   clipGeneratedPayloadSchema,
 ]);

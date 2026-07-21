@@ -22,6 +22,7 @@ enum TranscriptStatus {
 }
 
 enum HighlightStatus {
+  IDLE
   QUEUED
   DETECTING
   DONE
@@ -131,13 +132,14 @@ model Clip {
 model HighlightSet {
   id          String          @id @default(uuid()) @db.Uuid
   videoId     String          @unique @db.Uuid
-  status      HighlightStatus @default(QUEUED)
+  status      HighlightStatus @default(QUEUED) // IDLE se representa por ausencia de fila
   version     Int             @default(1)
   model       String? // modelo del rerank global
   localModel  String? // modelo del análisis por chunk
   promptHash  String?
   contentHash String? // hash del transcript → caché / reproceso incremental
-  items       Json? // [{ start, end, score, title, reason }]
+  config      Json? // GenerationConfig usado en la última generación
+  items       Json? // [{ start, end, score, title, reason, segments?, summary? }]
   costUsd     Decimal?        @db.Decimal(10, 6)
   failReason  String?
   createdAt   DateTime        @default(now())

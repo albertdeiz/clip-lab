@@ -26,6 +26,7 @@ import {
 } from "../lib/editor";
 import { useClipEditor } from "../lib/clip-editor-context";
 import { ClipsPanel } from "./clips-panel";
+import { GenerationSettings } from "./generation-settings";
 
 /**
  * Fila de tramo (segmento) arrastrable dentro de un clip resumen. El orden de
@@ -213,12 +214,12 @@ export function Composer() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        <GenerationSettings />
         <div>
           {clips.length === 0 ? (
             <p className="p-4 text-sm text-neutral-500">
-              Selecciona texto en el transcript y pulsa «Nuevo clip» (o tecla C).
-              Para un clip resumen, activa un clip y añade más tramos con «+ Añadir
-              a activo» (A).
+              Genera momentos con la IA arriba, o crea uno manual: selecciona
+              texto en el transcript y pulsa «Nuevo clip» (o tecla C).
             </p>
           ) : (
             <ul className="space-y-2 p-3">

@@ -12,13 +12,16 @@ import {
   type RefObject,
 } from "react";
 import type {
+  GenerationConfig,
   HighlightsResponse,
+  HighlightStatus,
   PlaybackUrlResponse,
   Segment,
   Sentence,
   TranscriptResponse,
   TranscriptWord,
 } from "@clip-lab/contracts";
+import { generationConfigSchema } from "@clip-lab/contracts";
 import { useAuth } from "./auth-context";
 import {
   buildSummary,
@@ -60,6 +63,13 @@ export interface ClipEditorValue {
   language: string | null;
   transcribing: boolean;
   detecting: boolean;
+  // generación on-demand de momentos
+  momentsStatus: HighlightStatus;
+  momentsFailReason: string | null;
+  momentsGenerating: boolean;
+  genConfig: GenerationConfig;
+  setGenConfig: (c: GenerationConfig) => void;
+  generateMoments: () => Promise<void>;
   // clips
   clips: EditClip[];
   activeId: string | null;
@@ -130,6 +140,11 @@ export function ClipEditorProvider({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatedKey, setGeneratedKey] = useState(0);
+  const [momentsNonce, setMomentsNonce] = useState(0);
+  const [momentsGenerating, setMomentsGenerating] = useState(false);
+  const [genConfig, setGenConfig] = useState<GenerationConfig>(() =>
+    generationConfigSchema.parse({}),
+  );
   const initialized = useRef(false);
 
   const words = transcript?.words ?? [];
@@ -191,6 +206,7 @@ export function ClipEditorProvider({
         );
         if (!active) return;
         setHighlights(h);
+        if (h.config) setGenConfig(h.config);
         if (!initialized.current && (h.status === "DONE" || h.status === "FAILED")) {
           initialized.current = true;
           const ec = toEditClips(h.items);
@@ -210,7 +226,7 @@ export function ClipEditorProvider({
       active = false;
       clearTimeout(timer);
     };
-  }, [videoId, authedFetch]);
+  }, [videoId, authedFetch, momentsNonce]);
 
   // --- playback ---
   const seek = useCallback((sec: number) => {
@@ -394,6 +410,25 @@ export function ClipEditorProvider({
     }
   }, [dirty, save, authedFetch, videoId]);
 
+  // Generación on-demand de momentos: envía el config, reencola y reinicia el
+  // poll para cargar los momentos nuevos cuando el worker termine.
+  const generateMoments = useCallback(async () => {
+    setMomentsGenerating(true);
+    try {
+      await authedFetch(`/videos/${videoId}/highlights/generate`, {
+        method: "POST",
+        body: genConfig,
+      });
+      initialized.current = false;
+      setHighlights((h) => (h ? { ...h, status: "QUEUED", failReason: null } : h));
+      setMomentsNonce((n) => n + 1);
+    } catch {
+      /* noop */
+    } finally {
+      setMomentsGenerating(false);
+    }
+  }, [authedFetch, videoId, genConfig]);
+
   // --- selección ---
   const selectionRange = useCallback((): Segment | null => {
     if (!selection || words.length === 0) return null;
@@ -517,6 +552,8 @@ export function ClipEditorProvider({
     transcript.status === "TRANSCRIBING";
   const detecting =
     highlights?.status === "QUEUED" || highlights?.status === "DETECTING";
+  const momentsStatus: HighlightStatus = highlights?.status ?? "IDLE";
+  const momentsFailReason = highlights?.failReason ?? null;
 
   const value = useMemo<ClipEditorValue>(
     () => ({
@@ -536,6 +573,12 @@ export function ClipEditorProvider({
       language: transcript?.language ?? null,
       transcribing,
       detecting,
+      momentsStatus,
+      momentsFailReason,
+      momentsGenerating,
+      genConfig,
+      setGenConfig,
+      generateMoments,
       clips,
       activeId,
       dirty,
@@ -578,6 +621,12 @@ export function ClipEditorProvider({
       sentences,
       transcribing,
       detecting,
+      momentsStatus,
+      momentsFailReason,
+      momentsGenerating,
+      genConfig,
+      setGenConfig,
+      generateMoments,
       clips,
       activeId,
       dirty,

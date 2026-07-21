@@ -5,7 +5,7 @@ import {
   QUEUES,
   ROUTING,
   videoUploadedPayloadSchema,
-  transcriptGeneratedPayloadSchema,
+  highlightsRequestedPayloadSchema,
   highlightsDetectedPayloadSchema,
 } from "@clip-lab/contracts";
 import { loadEnv } from "@clip-lab/config";
@@ -118,11 +118,16 @@ async function main(): Promise<void> {
   await consumeQueue(
     QUEUES.highlights,
     QUEUES.highlightsDlq,
-    ROUTING.TranscriptGenerated,
-    (raw) => transcriptGeneratedPayloadSchema.parse(raw),
+    ROUTING.HighlightsRequested,
+    (raw) => highlightsRequestedPayloadSchema.parse(raw),
     (p) => detectHighlights(p, publish),
     "highlights",
   );
+  // La generación es on-demand: quita el binding heredado que la disparaba
+  // automáticamente al transcribir (idempotente si ya no existe).
+  await channel
+    .unbindQueue(QUEUES.highlights, EXCHANGE, ROUTING.TranscriptGenerated)
+    .catch(() => undefined);
 
   await consumeQueue(
     QUEUES.clips,

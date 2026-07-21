@@ -131,12 +131,43 @@ export type TranscriptResponse = z.infer<typeof transcriptResponseSchema>;
 
 // --- Highlights ---
 export const highlightStatusSchema = z.enum([
+  "IDLE", // aún no solicitada (generación on-demand)
   "QUEUED",
   "DETECTING",
   "DONE",
   "FAILED",
 ]);
 export type HighlightStatus = z.infer<typeof highlightStatusSchema>;
+
+// --- Configuración de generación (on-demand, parametrizable) ---
+export const generationGranularitySchema = z.enum([
+  "few-long",
+  "balanced",
+  "many-short",
+]);
+export const generationStyleSchema = z.enum([
+  "balanced",
+  "educational",
+  "viral-hooks",
+  "quotes",
+]);
+
+/**
+ * Parámetros de comportamiento de la generación de momentos. Todos con default,
+ * de modo que un body parcial (`{}` o solo algunos campos) resuelve a un config
+ * completo. Provider/modelo/keys NO viven aquí (quedan server-side).
+ */
+export const generationConfigSchema = z.object({
+  targetCount: z.number().int().min(1).max(30).default(8),
+  minSec: z.number().positive().default(15),
+  maxSec: z.number().positive().default(90),
+  granularity: generationGranularitySchema.default("balanced"),
+  style: generationStyleSchema.default("balanced"),
+  titleLanguage: z.string().default("auto"), // auto | es | en | …
+  allowMultiSegment: z.boolean().default(true),
+  includeSummary: z.boolean().default(false),
+});
+export type GenerationConfig = z.infer<typeof generationConfigSchema>;
 
 /** Un tramo del video (rango temporal) que compone un clip. */
 export const segmentSchema = z.object({
@@ -166,6 +197,7 @@ export const highlightsResponseSchema = z.object({
   costUsd: z.number().nullable(),
   items: z.array(highlightSchema),
   failReason: z.string().nullable(),
+  config: generationConfigSchema.nullable(),
 });
 export type HighlightsResponse = z.infer<typeof highlightsResponseSchema>;
 

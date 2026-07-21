@@ -16,6 +16,7 @@ export const QUEUES = {
 export const ROUTING = {
   VideoUploaded: "VideoUploaded",
   TranscriptGenerated: "TranscriptGenerated",
+  HighlightsRequested: "HighlightsRequested",
   HighlightsDetected: "HighlightsDetected",
   ClipGenerated: "ClipGenerated",
 } as const;
